@@ -74,40 +74,52 @@ export async function closePool(): Promise<void> {
 }
 
 /**
- * Ejecutor de la migración SQL canónica inicial de Ganadito.
+ * Ejecutor de las migraciones SQL canónicas de Ganadito en orden secuencial.
  */
 export async function runInitialMigration(sqlPathOverride?: string): Promise<void> {
   const pool = getPool();
   const client = await pool.connect();
 
   try {
-    let sqlPath = sqlPathOverride;
+    if (sqlPathOverride) {
+      const ddl = fs.readFileSync(sqlPathOverride, 'utf8');
+      await client.query('BEGIN');
+      await client.query(ddl);
+      await client.query('COMMIT');
+      return;
+    }
 
-    if (!sqlPath) {
-      // Ubicar infrastructure/database/migrations/0001_initial_schema.sql relativo a la raíz
-      const currentDir = path.dirname(fileURLToPath(import.meta.url));
-      const candidatePaths = [
-        path.resolve(currentDir, '../../../infrastructure/database/migrations/0001_initial_schema.sql'),
-        path.resolve(process.cwd(), 'infrastructure/database/migrations/0001_initial_schema.sql'),
-        path.resolve(process.cwd(), '../../infrastructure/database/migrations/0001_initial_schema.sql')
-      ];
+    // Ubicar directorio de migraciones relativo a la raíz o workspace
+    const currentDir = path.dirname(fileURLToPath(import.meta.url));
+    const candidateDirs = [
+      path.resolve(currentDir, '../../../infrastructure/database/migrations'),
+      path.resolve(process.cwd(), 'infrastructure/database/migrations'),
+      path.resolve(process.cwd(), '../../infrastructure/database/migrations')
+    ];
 
-      for (const candidate of candidatePaths) {
-        if (fs.existsSync(candidate)) {
-          sqlPath = candidate;
-          break;
-        }
+    let migrationsDir: string | null = null;
+    for (const candidate of candidateDirs) {
+      if (fs.existsSync(candidate)) {
+        migrationsDir = candidate;
+        break;
       }
     }
 
-    if (!sqlPath || !fs.existsSync(sqlPath)) {
-      throw new Error(`No se encontró el archivo de migración en las rutas esperadas.`);
+    if (!migrationsDir) {
+      throw new Error(`No se encontró el directorio de migraciones en las rutas esperadas.`);
     }
 
-    const ddl = fs.readFileSync(sqlPath, 'utf8');
+    const files = fs
+      .readdirSync(migrationsDir)
+      .filter(file => file.endsWith('.sql'))
+      .sort();
 
     await client.query('BEGIN');
-    await client.query(ddl);
+    for (const file of files) {
+      const filePath = path.join(migrationsDir, file);
+      const ddl = fs.readFileSync(filePath, 'utf8');
+      await client.query(ddl);
+    }
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});

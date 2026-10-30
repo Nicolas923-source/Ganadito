@@ -29,6 +29,7 @@ describe('Integración PostgreSQL + PostGIS (Ganadito)', () => {
       'cotizaciones_spot',
       'lotes_subasta',
       'subasta_pujas',
+      'ordenes_compra',
       'idempotency_records',
       'outbox_events'
     ];
