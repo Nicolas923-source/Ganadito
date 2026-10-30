@@ -3,6 +3,8 @@ import fastifyJwt from '@fastify/jwt';
 import type pg from 'pg';
 import { getPool } from './db.js';
 import { authRoutes } from './auth/auth.routes.js';
+import { mapaRoutes } from './mapa/mapa.routes.js';
+import { spotRoutes } from './spot/spot.routes.js';
 import { getHealthStatus } from './index.js';
 
 export interface AppOptions {
@@ -32,6 +34,18 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
   // Registrar rutas de autenticación y RBAC dual
   app.register(authRoutes, {
     prefix: '/api/v1/auth',
+    pool
+  });
+
+  // Registrar rutas geoespaciales de mapa y establecimientos
+  app.register(mapaRoutes, {
+    prefix: '/api/v1',
+    pool
+  });
+
+  // Registrar rutas comerciales de cotizaciones en Pizarra Spot
+  app.register(spotRoutes, {
+    prefix: '/api/v1',
     pool
   });
 
