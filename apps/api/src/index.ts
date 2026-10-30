@@ -9,6 +9,8 @@ export * from './mapa/mapa.service.js';
 export * from './mapa/mapa.types.js';
 export * from './spot/spot.service.js';
 export * from './spot/spot.types.js';
+export * from './subastas/subastas.service.js';
+export * from './subastas/subastas.types.js';
 
 /**
  * Punto de entrada base para el servicio de API Ganadito.
