@@ -5,6 +5,7 @@ import { getPool } from './db.js';
 import { authRoutes } from './auth/auth.routes.js';
 import { mapaRoutes } from './mapa/mapa.routes.js';
 import { spotRoutes } from './spot/spot.routes.js';
+import { subastasRoutes } from './subastas/subastas.routes.js';
 import { getHealthStatus } from './index.js';
 
 export interface AppOptions {
@@ -45,6 +46,12 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
 
   // Registrar rutas comerciales de cotizaciones en Pizarra Spot
   app.register(spotRoutes, {
+    prefix: '/api/v1',
+    pool
+  });
+
+  // Registrar motor transaccional de subastas en vivo
+  app.register(subastasRoutes, {
     prefix: '/api/v1',
     pool
   });
