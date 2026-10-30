@@ -1,0 +1,16 @@
+{
+  "name": "@ganadito/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Frontend web de Ganadito (SvelteKit + TypeScript)",
+  "type": "module",
+  "scripts": {
+    "dev": "echo \"SvelteKit web dev script ready for initial setup\"",
+    "build": "echo \"SvelteKit web build script placeholder\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ganadito/contracts": "*",
+    "@ganadito/shared": "*"
+  }
+}

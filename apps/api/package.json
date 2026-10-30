@@ -1,0 +1,17 @@
+{
+  "name": "@ganadito/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Backend API de Ganadito (Node.js + Fastify + TypeScript)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "dev": "echo \"Fastify API dev script ready for initial setup\"",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ganadito/contracts": "*",
+    "@ganadito/shared": "*"
+  }
+}
