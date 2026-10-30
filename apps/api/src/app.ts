@@ -10,6 +10,7 @@ import { spotRoutes } from './spot/spot.routes.js';
 import { subastasRoutes } from './subastas/subastas.routes.js';
 import { subastasWsRoutes, SubastaWsHub } from './subastas/subastas.ws.js';
 import { pagosRoutes } from './pagos/pagos.routes.js';
+import { ordenesRoutes } from './subastas/ordenes.routes.js';
 import { getHealthStatus } from './index.js';
 
 export interface AppOptions {
@@ -97,6 +98,12 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
   // Registrar módulo financiero de pagos y webhooks de pasarelas
   app.register(pagosRoutes, {
     prefix: '/api/v1/pagos',
+    pool
+  });
+
+  // Registrar ciclo de entrega y liquidaciones de órdenes de compra
+  app.register(ordenesRoutes, {
+    prefix: '/api/v1/ordenes',
     pool
   });
 
