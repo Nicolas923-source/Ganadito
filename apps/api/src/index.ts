@@ -1,6 +1,10 @@
 import type { HealthCheckResponse } from '@ganadito/contracts';
 
 export * from './db.js';
+export * from './app.js';
+export * from './auth/types.js';
+export * from './auth/auth.service.js';
+export * from './auth/crypto.js';
 
 /**
  * Punto de entrada base para el servicio de API Ganadito.
