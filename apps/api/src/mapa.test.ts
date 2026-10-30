@@ -170,7 +170,7 @@ describe('Módulo de Mapa Geoespacial (PostGIS) y Pizarra Spot', () => {
     // 3.3 Radio 50 km: Callao y Lurín entran, Piura queda fuera
     const radio50Res = await app.inject({
       method: 'GET',
-      url: `/api/v1/establecimientos/cercanos?lat=${LIMA_CENTRO.lat}&lon=${LIMA_CENTRO.lon}&radio_km=50`
+      url: `/api/v1/establecimientos/cercanos?lat=${LIMA_CENTRO.lat}&lon=${LIMA_CENTRO.lon}&radio_km=50&limit=100`
     });
 
     assert.strictEqual(radio50Res.statusCode, 200);

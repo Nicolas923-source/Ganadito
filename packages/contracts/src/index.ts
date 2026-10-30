@@ -18,7 +18,10 @@ export * from './auctions.js';
 // 4. Pizarra Spot y Mapa
 export * from './spot.js';
 
-// 5. Utilidades generales de contratos
+// 5. Órdenes de Compra Comercial y Liquidación de Subastas
+export * from './orders.js';
+
+// 6. Utilidades generales de contratos
 export interface HealthCheckResponse {
   status: 'ok' | 'degraded' | 'error';
   timestamp: string;

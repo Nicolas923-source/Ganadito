@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import type pg from 'pg';
 import { SubastasService, SubastaError } from './subastas.service.js';
+import { SubastasCloserService } from './subastas-closer.service.js';
 import { createAuthMiddleware } from '../auth/auth.middleware.js';
 import type { CrearLoteSubastaInput, EmitirPujaInput } from './subastas.types.js';
 
@@ -11,6 +12,7 @@ export interface SubastasRoutesOptions {
 export const subastasRoutes: FastifyPluginAsync<SubastasRoutesOptions> = async (fastify, options) => {
   const { pool } = options;
   const subastasService = new SubastasService(pool);
+  const subastasCloserService = new SubastasCloserService(pool);
   const authenticate = createAuthMiddleware(pool);
 
   /**
@@ -132,6 +134,28 @@ export const subastasRoutes: FastifyPluginAsync<SubastasRoutesOptions> = async (
           statusCode: 500,
           error: 'Internal Server Error',
           message: 'Error al procesar la puja en la subasta.'
+        });
+      }
+    }
+  );
+
+  /**
+   * POST /api/v1/subastas/cerrar-expiradas
+   * Disparador manual/administrativo para liquidar y cerrar lotes cuya fecha de cierre ya venció.
+   */
+  fastify.post(
+    '/subastas/cerrar-expiradas',
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        const resultado = await subastasCloserService.cerrarLotesExpirados();
+        return reply.status(200).send(resultado);
+      } catch (err: any) {
+        request.log.error(err);
+        return reply.status(500).send({
+          statusCode: 500,
+          error: 'Internal Server Error',
+          message: 'Error al liquidar lotes expirados de subasta.'
         });
       }
     }
