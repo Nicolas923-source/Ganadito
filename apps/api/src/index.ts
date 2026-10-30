@@ -5,6 +5,10 @@ export * from './app.js';
 export * from './auth/types.js';
 export * from './auth/auth.service.js';
 export * from './auth/crypto.js';
+export * from './mapa/mapa.service.js';
+export * from './mapa/mapa.types.js';
+export * from './spot/spot.service.js';
+export * from './spot/spot.types.js';
 
 /**
  * Punto de entrada base para el servicio de API Ganadito.
