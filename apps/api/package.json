@@ -8,10 +8,16 @@
   "scripts": {
     "dev": "echo \"Fastify API dev script ready for initial setup\"",
     "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/**/*.test.ts"
   },
   "dependencies": {
     "@ganadito/contracts": "*",
-    "@ganadito/shared": "*"
+    "@ganadito/shared": "*",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.19.2"
   }
 }
