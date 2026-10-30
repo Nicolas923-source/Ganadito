@@ -9,6 +9,7 @@ import { mapaRoutes } from './mapa/mapa.routes.js';
 import { spotRoutes } from './spot/spot.routes.js';
 import { subastasRoutes } from './subastas/subastas.routes.js';
 import { subastasWsRoutes, SubastaWsHub } from './subastas/subastas.ws.js';
+import { pagosRoutes } from './pagos/pagos.routes.js';
 import { getHealthStatus } from './index.js';
 
 export interface AppOptions {
@@ -29,6 +30,25 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     options.jwtSecret ??
     process.env.JWT_SECRET ??
     'ganadito_super_secret_local_dev_key_32_chars_min';
+
+  // Preservar rawBody para validación criptográfica de firmas HMAC
+  app.addContentTypeParser(
+    'application/json',
+    { parseAs: 'string' },
+    (req, body, done) => {
+      (req as any).rawBody = body;
+      try {
+        const json =
+          typeof body === 'string' && body.trim().length > 0
+            ? JSON.parse(body)
+            : {};
+        done(null, json);
+      } catch (err: any) {
+        err.statusCode = 400;
+        done(err, undefined);
+      }
+    }
+  );
 
   // Registrar plugin oficial de WebSockets
   app.register(fastifyWebsocket);
@@ -72,6 +92,12 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     prefix: '/api/v1',
     subscriber: options.redisSubscriber,
     hub: options.wsHub
+  });
+
+  // Registrar módulo financiero de pagos y webhooks de pasarelas
+  app.register(pagosRoutes, {
+    prefix: '/api/v1/pagos',
+    pool
   });
 
   return app;

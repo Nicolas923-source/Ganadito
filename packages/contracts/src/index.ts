@@ -21,7 +21,10 @@ export * from './spot.js';
 // 5. Órdenes de Compra Comercial y Liquidación de Subastas
 export * from './orders.js';
 
-// 6. Utilidades generales de contratos
+// 6. Pagos y Webhooks de Pasarelas
+export * from './payments.js';
+
+// 7. Utilidades generales de contratos
 export interface HealthCheckResponse {
   status: 'ok' | 'degraded' | 'error';
   timestamp: string;
