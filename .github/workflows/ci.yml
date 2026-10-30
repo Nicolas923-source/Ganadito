@@ -28,6 +28,16 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     env:
       DATABASE_URL: postgres://postgres:postgrespassword@localhost:5432/ganadito
       DATABASE_HOST: localhost
@@ -40,6 +50,9 @@ jobs:
       DB_USER: postgres
       DB_PASSWORD: postgrespassword
       DB_NAME: ganadito
+      REDIS_URL: redis://localhost:6379
+      REDIS_HOST: localhost
+      REDIS_PORT: 6379
 
     steps:
       - name: Checkout del código

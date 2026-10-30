@@ -185,7 +185,7 @@ describe('Módulo de Mapa Geoespacial (PostGIS) y Pizarra Spot', () => {
     // Buscar en radio amplio (1000 km) para inspeccionar distancias calculadas
     const res = await app.inject({
       method: 'GET',
-      url: `/api/v1/establecimientos/cercanos?lat=${LIMA_CENTRO.lat}&lon=${LIMA_CENTRO.lon}&radio_km=1000`
+      url: `/api/v1/establecimientos/cercanos?lat=${LIMA_CENTRO.lat}&lon=${LIMA_CENTRO.lon}&radio_km=1000&limit=100`
     });
 
     assert.strictEqual(res.statusCode, 200);
