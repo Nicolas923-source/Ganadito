@@ -1,17 +1,22 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import fastifyJwt from '@fastify/jwt';
+import fastifyWebsocket from '@fastify/websocket';
 import type pg from 'pg';
+import type { Redis } from 'ioredis';
 import { getPool } from './db.js';
 import { authRoutes } from './auth/auth.routes.js';
 import { mapaRoutes } from './mapa/mapa.routes.js';
 import { spotRoutes } from './spot/spot.routes.js';
 import { subastasRoutes } from './subastas/subastas.routes.js';
+import { subastasWsRoutes, SubastaWsHub } from './subastas/subastas.ws.js';
 import { getHealthStatus } from './index.js';
 
 export interface AppOptions {
   pool?: pg.Pool;
   jwtSecret?: string;
   logger?: boolean;
+  redisSubscriber?: Redis;
+  wsHub?: SubastaWsHub;
 }
 
 export function buildApp(options: AppOptions = {}): FastifyInstance {
@@ -20,7 +25,13 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
   });
 
   const pool = options.pool ?? getPool();
-  const jwtSecret = options.jwtSecret ?? process.env.JWT_SECRET ?? 'ganadito_super_secret_local_dev_key_32_chars_min';
+  const jwtSecret =
+    options.jwtSecret ??
+    process.env.JWT_SECRET ??
+    'ganadito_super_secret_local_dev_key_32_chars_min';
+
+  // Registrar plugin oficial de WebSockets
+  app.register(fastifyWebsocket);
 
   // Registrar plugin oficial de JWT
   app.register(fastifyJwt, {
@@ -50,10 +61,17 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     pool
   });
 
-  // Registrar motor transaccional de subastas en vivo
+  // Registrar motor transaccional de subastas en vivo (REST)
   app.register(subastasRoutes, {
     prefix: '/api/v1',
     pool
+  });
+
+  // Registrar difusión WebSocket de subastas en vivo (WebSockets)
+  app.register(subastasWsRoutes, {
+    prefix: '/api/v1',
+    subscriber: options.redisSubscriber,
+    hub: options.wsHub
   });
 
   return app;
