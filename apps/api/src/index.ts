@@ -1,5 +1,7 @@
 import type { HealthCheckResponse } from '@ganadito/contracts';
 
+export * from './db.js';
+
 /**
  * Punto de entrada base para el servicio de API Ganadito.
  * Estructura hexagonal: controladores HTTP Fastify, adaptadores y servicios.
