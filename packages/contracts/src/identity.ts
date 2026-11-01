@@ -9,7 +9,8 @@ export const ROLES_ORGANIZACION = [
   'VENDEDOR',
   'OPERADOR',
   'ADMINISTRADOR',
-  'AUDITOR'
+  'AUDITOR',
+  'TRANSPORTISTA'
 ] as const;
 
 export type RolOrganizacion = (typeof ROLES_ORGANIZACION)[number];
