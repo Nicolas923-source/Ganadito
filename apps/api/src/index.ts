@@ -15,6 +15,7 @@ export * from './trazabilidad/trazabilidad.service.js';
 export * from './mayorista/mayorista.service.js';
 export * from './gmx/gmx.service.js';
 export * from './logistica/logistica.service.js';
+export * from './integraciones/ai-client.service.js';
 
 /**
  * Punto de entrada base para el servicio de API Ganadito.

@@ -15,6 +15,8 @@ import { trazabilidadRoutes } from './trazabilidad/trazabilidad.routes.js';
 import { mayoristaRoutes } from './mayorista/mayorista.routes.js';
 import { gmxRoutes } from './gmx/gmx.routes.js';
 import { logisticaRoutes } from './logistica/logistica.routes.js';
+import { aiRoutes } from './integraciones/ai.routes.js';
+import { AiClientService } from './integraciones/ai-client.service.js';
 import { getHealthStatus } from './index.js';
 
 export interface AppOptions {
@@ -23,6 +25,8 @@ export interface AppOptions {
   logger?: boolean;
   redisSubscriber?: Redis;
   wsHub?: SubastaWsHub;
+  aiClient?: AiClientService;
+  aiServiceUrl?: string;
 }
 
 export function buildApp(options: AppOptions = {}): FastifyInstance {
@@ -133,6 +137,13 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
   app.register(logisticaRoutes, {
     prefix: '/api/v1/logistica',
     pool
+  });
+
+  // Registrar Cliente Resiliente del Servicio Satélite de Inteligencia Artificial
+  app.register(aiRoutes, {
+    prefix: '/api/v1/ia',
+    aiClient: options.aiClient,
+    aiServiceUrl: options.aiServiceUrl
   });
 
   return app;
