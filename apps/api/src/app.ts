@@ -11,6 +11,7 @@ import { subastasRoutes } from './subastas/subastas.routes.js';
 import { subastasWsRoutes, SubastaWsHub } from './subastas/subastas.ws.js';
 import { pagosRoutes } from './pagos/pagos.routes.js';
 import { ordenesRoutes } from './subastas/ordenes.routes.js';
+import { trazabilidadRoutes } from './trazabilidad/trazabilidad.routes.js';
 import { getHealthStatus } from './index.js';
 
 export interface AppOptions {
@@ -104,6 +105,12 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
   // Registrar ciclo de entrega y liquidaciones de órdenes de compra
   app.register(ordenesRoutes, {
     prefix: '/api/v1/ordenes',
+    pool
+  });
+
+  // Registrar módulo de trazabilidad bovina y pasaporte digital inmutable
+  app.register(trazabilidadRoutes, {
+    prefix: '/api/v1/trazabilidad',
     pool
   });
 

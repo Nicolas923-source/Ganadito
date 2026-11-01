@@ -24,7 +24,10 @@ export * from './orders.js';
 // 6. Pagos y Webhooks de Pasarelas
 export * from './payments.js';
 
-// 7. Utilidades generales de contratos
+// 7. Trazabilidad Bovina y Pasaporte Digital
+export * from './traceability.js';
+
+// 8. Utilidades generales de contratos
 export interface HealthCheckResponse {
   status: 'ok' | 'degraded' | 'error';
   timestamp: string;

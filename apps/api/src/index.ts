@@ -11,6 +11,7 @@ export * from './spot/spot.service.js';
 export * from './spot/spot.types.js';
 export * from './subastas/subastas.service.js';
 export * from './subastas/subastas.types.js';
+export * from './trazabilidad/trazabilidad.service.js';
 
 /**
  * Punto de entrada base para el servicio de API Ganadito.
