@@ -33,7 +33,10 @@ export * from './wholesale.js';
 // 9. Bolsa de Valores Cárnica (GMX) y Motor de Escandallo Anatómico (NTP 201.055)
 export * from './gmx.js';
 
-// 10. Utilidades generales de contratos
+// 10. Pasarela Logística Integrada (Ganadito Cargo & Express API)
+export * from './logistics.js';
+
+// 11. Utilidades generales de contratos
 export interface HealthCheckResponse {
   status: 'ok' | 'degraded' | 'error';
   timestamp: string;

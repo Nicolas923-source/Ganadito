@@ -14,6 +14,7 @@ import { ordenesRoutes } from './subastas/ordenes.routes.js';
 import { trazabilidadRoutes } from './trazabilidad/trazabilidad.routes.js';
 import { mayoristaRoutes } from './mayorista/mayorista.routes.js';
 import { gmxRoutes } from './gmx/gmx.routes.js';
+import { logisticaRoutes } from './logistica/logistica.routes.js';
 import { getHealthStatus } from './index.js';
 
 export interface AppOptions {
@@ -125,6 +126,12 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
   // Registrar Bolsa de Valores Cárnica (GMX) y Motor de Escandallo Anatómico (NTP 201.055)
   app.register(gmxRoutes, {
     prefix: '/api/v1/gmx',
+    pool
+  });
+
+  // Registrar Pasarela Logística Integrada (Ganadito Cargo & Express API)
+  app.register(logisticaRoutes, {
+    prefix: '/api/v1/logistica',
     pool
   });
 
