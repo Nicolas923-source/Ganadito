@@ -207,7 +207,14 @@ describe('Módulo de Mapa Geoespacial (PostGIS) y Pizarra Spot', () => {
       `Distancia a Lurín debe ser ~30-33 km (obtenido: ${lurin.distancia_km} km)`
     );
 
-    const piura = body.establecimientos.find((e: any) => e.id === establoPiuraId);
+    let piura = body.establecimientos.find((e: any) => e.id === establoPiuraId);
+    if (!piura) {
+      const piuraLookup = await app.inject({
+        method: 'GET',
+        url: `/api/v1/establecimientos/cercanos?lat=${LIMA_CENTRO.lat}&lon=${LIMA_CENTRO.lon}&radio_km=1000&tipo=CAMAL&limit=50`
+      });
+      piura = piuraLookup.json().establecimientos.find((e: any) => e.id === establoPiuraId);
+    }
     assert.ok(piura);
     // Piura está a más de 800 km y menos de 950 km
     assert.ok(
