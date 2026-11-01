@@ -13,6 +13,7 @@ import { pagosRoutes } from './pagos/pagos.routes.js';
 import { ordenesRoutes } from './subastas/ordenes.routes.js';
 import { trazabilidadRoutes } from './trazabilidad/trazabilidad.routes.js';
 import { mayoristaRoutes } from './mayorista/mayorista.routes.js';
+import { gmxRoutes } from './gmx/gmx.routes.js';
 import { getHealthStatus } from './index.js';
 
 export interface AppOptions {
@@ -118,6 +119,12 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
   // Registrar motor de compras mayoristas, agregación de demanda B2B y ofertas flash
   app.register(mayoristaRoutes, {
     prefix: '/api/v1/mayorista',
+    pool
+  });
+
+  // Registrar Bolsa de Valores Cárnica (GMX) y Motor de Escandallo Anatómico (NTP 201.055)
+  app.register(gmxRoutes, {
+    prefix: '/api/v1/gmx',
     pool
   });
 

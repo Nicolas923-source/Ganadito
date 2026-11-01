@@ -30,7 +30,10 @@ export * from './traceability.js';
 // 8. Motor de Compras Mayoristas, Demand Pooling y Ofertas Flash
 export * from './wholesale.js';
 
-// 9. Utilidades generales de contratos
+// 9. Bolsa de Valores Cárnica (GMX) y Motor de Escandallo Anatómico (NTP 201.055)
+export * from './gmx.js';
+
+// 10. Utilidades generales de contratos
 export interface HealthCheckResponse {
   status: 'ok' | 'degraded' | 'error';
   timestamp: string;
