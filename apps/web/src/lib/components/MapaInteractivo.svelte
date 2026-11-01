@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  const browser = typeof window !== 'undefined';
+  import { browser } from '$app/environment';
 
   export interface MarcadorEstablecimiento {
     id: string;

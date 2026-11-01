@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  const browser = typeof window !== 'undefined';
+  import { browser } from '$app/environment';
   import MapaInteractivo, { type MarcadorEstablecimiento } from '../lib/components/MapaInteractivo.svelte';
   import PizarraSpotTable, { type ItemCotizacionVisual } from '../lib/components/PizarraSpotTable.svelte';
   import FiltrosMapa from '../lib/components/FiltrosMapa.svelte';
