@@ -1,9 +1,17 @@
 {
-  "extends": "$app/tsconfig",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "target": "ESNext",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true
+  },
   "include": [
     "src/**/*",
-    "src/**/*.d.ts",
-    "test/**/*"
+    "src/**/*.d.ts"
   ],
   "exclude": [
     "src/service-worker"

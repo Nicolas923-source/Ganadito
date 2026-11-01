@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 declare module '$app/environment' {
   export const browser: boolean;
   export const dev: boolean;
