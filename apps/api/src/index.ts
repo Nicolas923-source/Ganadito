@@ -16,6 +16,8 @@ export * from './mayorista/mayorista.service.js';
 export * from './gmx/gmx.service.js';
 export * from './logistica/logistica.service.js';
 export * from './integraciones/ai-client.service.js';
+export * from './integraciones/sunat.adapter.js';
+export * from './integraciones/cavali.adapter.js';
 
 /**
  * Punto de entrada base para el servicio de API Ganadito.

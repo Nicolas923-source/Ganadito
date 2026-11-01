@@ -39,7 +39,10 @@ export * from './logistics.js';
 // 11. Servicio Satélite de Inteligencia Artificial (ExpoGanadito & Dr. Ganadito)
 export * from './ai.js';
 
-// 12. Utilidades generales de contratos
+// 12. Integraciones Tributarias y Financieras (SEE-SUNAT & CAVALI Factoring)
+export * from './tax.js';
+
+// 13. Utilidades generales de contratos
 export interface HealthCheckResponse {
   status: 'ok' | 'degraded' | 'error';
   timestamp: string;

@@ -40,6 +40,8 @@ describe('Integración PostgreSQL + PostGIS (Ganadito)', () => {
       'gmx_calces',
       'transportistas_unidades',
       'fletes_solicitudes',
+      'comprobantes_tributarios',
+      'factoring_cavali_solicitudes',
       'idempotency_records',
       'outbox_events'
     ];

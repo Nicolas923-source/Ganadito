@@ -17,6 +17,9 @@ import { gmxRoutes } from './gmx/gmx.routes.js';
 import { logisticaRoutes } from './logistica/logistica.routes.js';
 import { aiRoutes } from './integraciones/ai.routes.js';
 import { AiClientService } from './integraciones/ai-client.service.js';
+import { taxRoutes } from './integraciones/tax.routes.js';
+import { SunatAdapter } from './integraciones/sunat.adapter.js';
+import { CavaliAdapter } from './integraciones/cavali.adapter.js';
 import { getHealthStatus } from './index.js';
 
 export interface AppOptions {
@@ -27,6 +30,8 @@ export interface AppOptions {
   wsHub?: SubastaWsHub;
   aiClient?: AiClientService;
   aiServiceUrl?: string;
+  sunatAdapter?: SunatAdapter;
+  cavaliAdapter?: CavaliAdapter;
 }
 
 export function buildApp(options: AppOptions = {}): FastifyInstance {
@@ -144,6 +149,14 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     prefix: '/api/v1/ia',
     aiClient: options.aiClient,
     aiServiceUrl: options.aiServiceUrl
+  });
+
+  // Registrar Adaptadores Tributarios (SEE-SUNAT) y Fintech (CAVALI Factoring)
+  app.register(taxRoutes, {
+    prefix: '/api/v1',
+    pool,
+    sunatAdapter: options.sunatAdapter,
+    cavaliAdapter: options.cavaliAdapter
   });
 
   return app;
