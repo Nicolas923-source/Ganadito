@@ -12,6 +12,7 @@ import { subastasWsRoutes, SubastaWsHub } from './subastas/subastas.ws.js';
 import { pagosRoutes } from './pagos/pagos.routes.js';
 import { ordenesRoutes } from './subastas/ordenes.routes.js';
 import { trazabilidadRoutes } from './trazabilidad/trazabilidad.routes.js';
+import { mayoristaRoutes } from './mayorista/mayorista.routes.js';
 import { getHealthStatus } from './index.js';
 
 export interface AppOptions {
@@ -111,6 +112,12 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
   // Registrar módulo de trazabilidad bovina y pasaporte digital inmutable
   app.register(trazabilidadRoutes, {
     prefix: '/api/v1/trazabilidad',
+    pool
+  });
+
+  // Registrar motor de compras mayoristas, agregación de demanda B2B y ofertas flash
+  app.register(mayoristaRoutes, {
+    prefix: '/api/v1/mayorista',
     pool
   });
 

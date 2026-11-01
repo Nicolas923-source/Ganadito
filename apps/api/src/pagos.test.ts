@@ -89,7 +89,7 @@ describe('Módulo de Pagos, Webhooks HMAC e Idempotencia Financiera', { concurre
       `UPDATE lotes_subasta SET fecha_cierre = NOW() - INTERVAL '5 seconds' WHERE id = $1`,
       [loteId]
     );
-    await closerService.cerrarLotesExpirados();
+    await closerService.cerrarLotesExpirados(100);
 
     // Obtener la orden de compra generada
     const ordenRes = await pool.query<{ id: string; total_a_pagar: string | number; estado: string }>(

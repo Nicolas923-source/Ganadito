@@ -100,7 +100,7 @@ describe('Ciclo de Despacho, Confirmación de Entrega y Liquidación Neta al Ven
     const loteId = loteRes.json().id;
 
     // Puja ganadora de 5500
-    await app.inject({
+    const pujaRes = await app.inject({
       method: 'POST',
       url: `/api/v1/subastas/${loteId}/pujas`,
       headers: {
@@ -109,13 +109,14 @@ describe('Ciclo de Despacho, Confirmación de Entrega y Liquidación Neta al Ven
       },
       payload: { monto: montoAdjudicado }
     });
+    assert.strictEqual(pujaRes.statusCode, 201);
 
     // Expirar fecha de cierre y generar orden_compra
     await pool.query(
       `UPDATE lotes_subasta SET fecha_cierre = NOW() - INTERVAL '5 seconds' WHERE id = $1`,
       [loteId]
     );
-    await closerService.cerrarLotesExpirados();
+    await closerService.cerrarLotesExpirados(100);
 
     const ordenRes = await pool.query<{ id: string; estado: string }>(
       `SELECT id, estado FROM ordenes_compra WHERE lote_id = $1`,
