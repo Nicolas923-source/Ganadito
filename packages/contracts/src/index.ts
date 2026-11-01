@@ -27,7 +27,10 @@ export * from './payments.js';
 // 7. Trazabilidad Bovina y Pasaporte Digital
 export * from './traceability.js';
 
-// 8. Utilidades generales de contratos
+// 8. Motor de Compras Mayoristas, Demand Pooling y Ofertas Flash
+export * from './wholesale.js';
+
+// 9. Utilidades generales de contratos
 export interface HealthCheckResponse {
   status: 'ok' | 'degraded' | 'error';
   timestamp: string;

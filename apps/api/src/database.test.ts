@@ -34,6 +34,8 @@ describe('Integración PostgreSQL + PostGIS (Ganadito)', () => {
       'liquidaciones_vendedores',
       'bovinos',
       'pasaporte_bovino_events',
+      'pools_compra_mayorista',
+      'pool_participaciones',
       'idempotency_records',
       'outbox_events'
     ];
@@ -58,5 +60,11 @@ describe('Integración PostgreSQL + PostGIS (Ganadito)', () => {
       `SELECT conname FROM pg_constraint WHERE conname = 'uq_lote_secuencia';`
     );
     assert.strictEqual(constraintResult.rows.length, 1, 'El constraint uq_lote_secuencia debe existir en subasta_pujas');
+
+    // 6. Comprobar constraint única uq_pool_organizacion en pool_participaciones
+    const poolConstraintRes = await pool.query<{ conname: string }>(
+      `SELECT conname FROM pg_constraint WHERE conname = 'uq_pool_organizacion';`
+    );
+    assert.strictEqual(poolConstraintRes.rows.length, 1, 'El constraint uq_pool_organizacion debe existir en pool_participaciones');
   });
 });

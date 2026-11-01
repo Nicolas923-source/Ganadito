@@ -144,7 +144,7 @@ describe('Módulo de Mapa Geoespacial (PostGIS) y Pizarra Spot', () => {
     // 3.1 Radio 5 km desde Lima Centro: Callao (~10.6 km) y Lurín (~32 km) deben quedar fuera
     const radio5Res = await app.inject({
       method: 'GET',
-      url: `/api/v1/establecimientos/cercanos?lat=${LIMA_CENTRO.lat}&lon=${LIMA_CENTRO.lon}&radio_km=5`
+      url: `/api/v1/establecimientos/cercanos?lat=${LIMA_CENTRO.lat}&lon=${LIMA_CENTRO.lon}&radio_km=5&limit=100`
     });
 
     assert.strictEqual(radio5Res.statusCode, 200);
@@ -157,7 +157,7 @@ describe('Módulo de Mapa Geoespacial (PostGIS) y Pizarra Spot', () => {
     // 3.2 Radio 15 km desde Lima Centro: Callao (~10.6 km) debe entrar, pero Lurín (~32 km) debe quedar fuera
     const radio15Res = await app.inject({
       method: 'GET',
-      url: `/api/v1/establecimientos/cercanos?lat=${LIMA_CENTRO.lat}&lon=${LIMA_CENTRO.lon}&radio_km=15`
+      url: `/api/v1/establecimientos/cercanos?lat=${LIMA_CENTRO.lat}&lon=${LIMA_CENTRO.lon}&radio_km=15&limit=100`
     });
 
     assert.strictEqual(radio15Res.statusCode, 200);

@@ -32,7 +32,7 @@ export class SubastasCloserService {
    * Cada lote se evalúa y confirma en su propia transacción atómica (BEGIN ... COMMIT)
    * con 'FOR UPDATE SKIP LOCKED' para evitar condiciones de carrera o bloqueos entre réplicas.
    */
-  async cerrarLotesExpirados(batchSize = 20): Promise<ResultadoCierreBatch> {
+  async cerrarLotesExpirados(batchSize = 100): Promise<ResultadoCierreBatch> {
     const resultado: ResultadoCierreBatch = {
       totalEvaluados: 0,
       adjudicados: 0,
