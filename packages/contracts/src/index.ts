@@ -36,7 +36,10 @@ export * from './gmx.js';
 // 10. Pasarela Logística Integrada (Ganadito Cargo & Express API)
 export * from './logistics.js';
 
-// 11. Utilidades generales de contratos
+// 11. Servicio Satélite de Inteligencia Artificial (ExpoGanadito & Dr. Ganadito)
+export * from './ai.js';
+
+// 12. Utilidades generales de contratos
 export interface HealthCheckResponse {
   status: 'ok' | 'degraded' | 'error';
   timestamp: string;
