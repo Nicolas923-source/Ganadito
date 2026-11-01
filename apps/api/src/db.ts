@@ -74,7 +74,7 @@ export async function closePool(): Promise<void> {
 }
 
 /**
- * Ejecutor de las migraciones SQL canónicas de Ganadito (0001 a 0008) en orden secuencial.
+ * Ejecutor de las migraciones SQL canónicas de Ganadito (0001 a 0009) en orden secuencial.
  */
 export async function runInitialMigration(sqlPathOverride?: string): Promise<void> {
   const pool = getPool();
