@@ -36,6 +36,8 @@ describe('Integración PostgreSQL + PostGIS (Ganadito)', () => {
       'pasaporte_bovino_events',
       'pools_compra_mayorista',
       'pool_participaciones',
+      'gmx_ordenes',
+      'gmx_calces',
       'idempotency_records',
       'outbox_events'
     ];
@@ -66,5 +68,11 @@ describe('Integración PostgreSQL + PostGIS (Ganadito)', () => {
       `SELECT conname FROM pg_constraint WHERE conname = 'uq_pool_organizacion';`
     );
     assert.strictEqual(poolConstraintRes.rows.length, 1, 'El constraint uq_pool_organizacion debe existir en pool_participaciones');
+
+    // 7. Comprobar índices del libro de órdenes GMX
+    const gmxIdxRes = await pool.query<{ indexname: string }>(
+      `SELECT indexname FROM pg_indexes WHERE tablename = 'gmx_ordenes' AND indexname IN ('idx_gmx_orderbook_compra', 'idx_gmx_orderbook_venta');`
+    );
+    assert.strictEqual(gmxIdxRes.rows.length, 2, 'Los índices de calce GMX deben existir en gmx_ordenes');
   });
 });
