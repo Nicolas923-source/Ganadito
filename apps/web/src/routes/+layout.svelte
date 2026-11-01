@@ -27,6 +27,23 @@
         </a>
       </div>
 
+      <!-- Menú de Navegación -->
+      <nav class="hidden sm:flex items-center gap-2 text-xs">
+        <a
+          href="/"
+          class="px-3 py-1.5 rounded-lg font-semibold text-slate-300 hover:text-white hover:bg-slate-900 transition-colors"
+        >
+          Mercado Spot & Mapa
+        </a>
+        <a
+          href="/subastas/lote-demo-01"
+          class="px-3 py-1.5 rounded-lg font-semibold text-slate-300 hover:text-white hover:bg-slate-900 transition-colors flex items-center gap-1.5"
+        >
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          Subastas en Vivo
+        </a>
+      </nav>
+
       <!-- Indicadores de Mercado en Vivo -->
       <div class="hidden md:flex items-center gap-6 text-xs">
         <div class="flex items-center gap-2 bg-slate-900/80 px-3 py-1.5 rounded-lg border border-slate-800">

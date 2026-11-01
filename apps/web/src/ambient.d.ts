@@ -13,3 +13,17 @@ declare module '$app/env' {
   export const building: boolean;
   export const version: string;
 }
+
+declare module '$app/state' {
+  export const page: {
+    params: Record<string, string>;
+    url: URL;
+    status: number;
+    error: any;
+    data: any;
+  };
+}
+
+declare module '$app/stores' {
+  export const page: any;
+}
