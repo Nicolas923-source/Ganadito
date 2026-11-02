@@ -56,6 +56,13 @@
           <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
           Compras Mayoristas
         </a>
+        <a
+          href="/trazabilidad/bov-demo-01"
+          class="px-3 py-1.5 rounded-lg font-semibold text-slate-300 hover:text-white hover:bg-slate-900 transition-colors flex items-center gap-1.5"
+        >
+          <span class="w-2 h-2 rounded-full bg-teal-400"></span>
+          Pasaporte Bovino
+        </a>
       </nav>
 
       <!-- Indicadores de Mercado en Vivo -->
