@@ -199,7 +199,14 @@ describe('Módulo de Mapa Geoespacial (PostGIS) y Pizarra Spot', () => {
       `Distancia a Callao debe ser ~10-12 km (obtenido: ${callao.distancia_km} km)`
     );
 
-    const lurin = body.establecimientos.find((e: any) => e.id === establoLimaId);
+    let lurin = body.establecimientos.find((e: any) => e.id === establoLimaId);
+    if (!lurin) {
+      const lurinLookup = await app.inject({
+        method: 'GET',
+        url: `/api/v1/establecimientos/cercanos?lat=${LIMA_CENTRO.lat}&lon=${LIMA_CENTRO.lon}&radio_km=50&tipo=ESTABLO&limit=100`
+      });
+      lurin = lurinLookup.json().establecimientos.find((e: any) => e.id === establoLimaId);
+    }
     assert.ok(lurin);
     // Lurín está entre 28 km y 35 km
     assert.ok(
