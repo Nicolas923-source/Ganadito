@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "echo \"Fastify API dev script ready for initial setup\"",
     "build": "tsc",
+    "seed": "tsx src/seed/seed.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test --test-concurrency=1 src/**/*.test.ts"
   },
