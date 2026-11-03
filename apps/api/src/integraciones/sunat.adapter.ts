@@ -422,4 +422,16 @@ export class SunatAdapter {
     }
     return mapComprobanteRow(res.rows[0]);
   }
+
+  /**
+   * Lista comprobantes tributarios ordenados cronológicamente descendente.
+   */
+  async listarComprobantes(limit: number = 50): Promise<ComprobanteFiscalRecord[]> {
+    const safeLimit = Math.min(Math.max(1, limit), 100);
+    const res = await this.pool.query(
+      'SELECT * FROM comprobantes_tributarios ORDER BY created_at DESC LIMIT $1;',
+      [safeLimit]
+    );
+    return res.rows.map(mapComprobanteRow);
+  }
 }

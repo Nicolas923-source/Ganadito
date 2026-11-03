@@ -204,4 +204,16 @@ export class CavaliAdapter {
     }
     return mapCavaliRow(res.rows[0]);
   }
+
+  /**
+   * Lista solicitudes de factoring ordenadas cronológicamente descendente.
+   */
+  async listarFactorings(limit: number = 50): Promise<FactoringCavaliRecord[]> {
+    const safeLimit = Math.min(Math.max(1, limit), 100);
+    const res = await this.pool.query(
+      'SELECT * FROM factoring_cavali_solicitudes ORDER BY created_at DESC LIMIT $1;',
+      [safeLimit]
+    );
+    return res.rows.map(mapCavaliRow);
+  }
 }

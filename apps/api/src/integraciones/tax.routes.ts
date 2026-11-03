@@ -76,6 +76,29 @@ export const taxRoutes: FastifyPluginAsync<TaxRoutesOptions> = async (fastify, o
   );
 
   /**
+   * GET /api/v1/tributario/comprobantes
+   * Lista comprobantes fiscales emitidos.
+   */
+  fastify.get<{ Querystring: { limit?: number } }>(
+    '/tributario/comprobantes',
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        const limit = request.query.limit ? Number(request.query.limit) : 50;
+        const comprobantes = await sunatAdapter.listarComprobantes(limit);
+        return reply.status(200).send({ comprobantes });
+      } catch (err: any) {
+        request.log.error(err);
+        return reply.status(500).send({
+          statusCode: 500,
+          error: 'Internal Server Error',
+          message: 'Error al listar los comprobantes tributarios.'
+        });
+      }
+    }
+  );
+
+  /**
    * GET /api/v1/tributario/comprobantes/:id
    * Obtiene el detalle de un comprobante tributario.
    */
@@ -132,6 +155,29 @@ export const taxRoutes: FastifyPluginAsync<TaxRoutesOptions> = async (fastify, o
           statusCode: 500,
           error: 'Internal Server Error',
           message: 'Error al procesar la solicitud de factoring CAVALI.'
+        });
+      }
+    }
+  );
+
+  /**
+   * GET /api/v1/fintech/cavali
+   * Lista solicitudes de factoring electrónico.
+   */
+  fastify.get<{ Querystring: { limit?: number } }>(
+    '/fintech/cavali',
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        const limit = request.query.limit ? Number(request.query.limit) : 50;
+        const factorings = await cavaliAdapter.listarFactorings(limit);
+        return reply.status(200).send({ factorings });
+      } catch (err: any) {
+        request.log.error(err);
+        return reply.status(500).send({
+          statusCode: 500,
+          error: 'Internal Server Error',
+          message: 'Error al listar solicitudes de factoring.'
         });
       }
     }
