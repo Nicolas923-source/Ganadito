@@ -3,6 +3,65 @@ import { getPool, closePool, runInitialMigration } from '../db.js';
 import { calcularHashEvento, GENESIS_PREV_HASH } from '@ganadito/contracts';
 
 // ============================================================================
+// GUARDIA DE SEGURIDAD CONTRA EJECUCIÓN EN PRODUCCIÓN
+// ============================================================================
+
+/**
+ * Guardia de seguridad para impedir ejecuciones accidentales en entornos de producción
+ * o sobre bases de datos no locales/tests.
+ */
+export function assertSafeSeedEnvironment(): void {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('⛔ [ERROR CRÍTICO] No se permite ejecutar seeders en entorno de producción (NODE_ENV === "production"). Abortando.');
+    process.exit(1);
+  }
+
+  const dbUrl = process.env.DATABASE_URL;
+  if (dbUrl) {
+    let hostname = '';
+    try {
+      const parsed = new URL(dbUrl);
+      hostname = parsed.hostname;
+    } catch {
+      hostname = dbUrl;
+    }
+
+    const isSafeUrl =
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === 'ganadito-postgres' ||
+      hostname === 'postgres' ||
+      hostname.endsWith('.local') ||
+      hostname.includes('test');
+
+    if (!isSafeUrl) {
+      console.error(
+        `⛔ [ERROR CRÍTICO] DATABASE_URL apunta a un host no permitido para seeders (${hostname}). Solo se admiten conexiones locales o de test/docker. Abortando.`
+      );
+      process.exit(1);
+    }
+  }
+
+  const dbHost = process.env.DATABASE_HOST;
+  if (dbHost) {
+    const isSafeHost =
+      dbHost === 'localhost' ||
+      dbHost === '127.0.0.1' ||
+      dbHost === 'ganadito-postgres' ||
+      dbHost === 'postgres' ||
+      dbHost.endsWith('.local') ||
+      dbHost.includes('test');
+
+    if (!isSafeHost) {
+      console.error(
+        `⛔ [ERROR CRÍTICO] DATABASE_HOST (${dbHost}) no apunta a una base de datos local o de test/docker. Abortando.`
+      );
+      process.exit(1);
+    }
+  }
+}
+
+// ============================================================================
 // CONSTANTES Y UUIDS DETERMINÍSTICOS PARA IDEMPOTENCIA TOTAL
 // ============================================================================
 
@@ -62,6 +121,9 @@ export const SEED_IDS = {
 };
 
 export async function runDatabaseSeed(): Promise<void> {
+  // Guardia de seguridad activa
+  assertSafeSeedEnvironment();
+
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('🌱 GANADITO — INICIALIZACIÓN DE MOTOR DE DATOS SEMILLA (SEEDERS E2E)');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
