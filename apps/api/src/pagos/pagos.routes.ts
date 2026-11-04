@@ -1,21 +1,41 @@
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import type pg from 'pg';
-import { PagosService, PagoError } from './pagos.service.js';
+import { PagosService, PagoError, resolvePagosConfig, type PagosConfig } from './pagos.service.js';
 import { createAuthMiddleware } from '../auth/auth.middleware.js';
 import type { CheckoutInput, WebhookPagoPayload } from '@ganadito/contracts';
 
 export interface PagosRoutesOptions {
   pool: pg.Pool;
+  config?: Partial<PagosConfig>;
+}
+
+function enviarPagosDeshabilitados(reply: FastifyReply) {
+  return reply.status(503).send({
+    statusCode: 503,
+    error: 'PagosDeshabilitados',
+    message: 'El módulo de pagos no está habilitado en este entorno.'
+  });
 }
 
 export const pagosRoutes: FastifyPluginAsync<PagosRoutesOptions> = async (fastify, options) => {
   const { pool } = options;
-  const pagosService = new PagosService(pool);
+
+  // Lanza al registrar el plugin si PAYMENTS_ENABLED=true sin configuración segura,
+  // de modo que app.ready() / listen() fallan en el arranque y no en el primer cobro.
+  const config = resolvePagosConfig(options.config);
+
+  if (!config.enabled) {
+    fastify.post('/checkout', async (_request, reply) => enviarPagosDeshabilitados(reply));
+    fastify.post('/webhook', async (_request, reply) => enviarPagosDeshabilitados(reply));
+    return;
+  }
+
+  const pagosService = new PagosService(pool, config);
   const authenticate = createAuthMiddleware(pool);
 
   /**
    * POST /api/v1/pagos/checkout
-   * Inicia la intención de pago para una orden de compra en estado PENDIENTE_PAGO.
+   * Inicia o reutiliza la intención de pago de una orden en estado PENDIENTE_PAGO.
    */
   fastify.post<{ Body: CheckoutInput }>(
     '/checkout',
@@ -59,15 +79,23 @@ export const pagosRoutes: FastifyPluginAsync<PagosRoutesOptions> = async (fastif
 
   /**
    * POST /api/v1/pagos/webhook
-   * Callback seguro para notificaciones de pasarelas de pago externas.
-   * Valida firma HMAC-SHA256, ventana anti-replay y confirma transacciones atómicamente.
+   * Callback del proveedor. Requiere x-signature = HMAC-SHA256(`${x-timestamp}.${rawBody}`).
    */
   fastify.post<{ Body: WebhookPagoPayload }>(
     '/webhook',
     async (request, reply) => {
-      try {
-        const rawBody = (request as any).rawBody ?? JSON.stringify(request.body);
+      const rawBody = (request as any).rawBody;
 
+      if (typeof rawBody !== 'string') {
+        // Sin el body exacto recibido no es posible verificar la firma.
+        return reply.status(415).send({
+          statusCode: 415,
+          error: 'Unsupported Media Type',
+          message: 'El webhook debe enviarse como application/json.'
+        });
+      }
+
+      try {
         const resultado = await pagosService.procesarWebhook(
           request.headers,
           rawBody,

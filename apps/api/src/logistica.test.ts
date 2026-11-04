@@ -51,7 +51,7 @@ describe('Pasarela Logística Integrada (Ganadito Cargo & Express API)', { concu
       nombre: 'Transportes Huascarán SAC',
       organizacion_nombre: `Huascarán Cargo ${Date.now()}`,
       rol_inicial: 'TRANSPORTISTA'
-    });
+    }, { allowInternalRoles: true });
     const t1Login = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/login',
@@ -66,7 +66,7 @@ describe('Pasarela Logística Integrada (Ganadito Cargo & Express API)', { concu
       nombre: 'Expreso Ganadero del Norte EIRL',
       organizacion_nombre: `Expreso Ganadero ${Date.now()}`,
       rol_inicial: 'TRANSPORTISTA'
-    });
+    }, { allowInternalRoles: true });
     const t2Login = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/login',
