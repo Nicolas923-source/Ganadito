@@ -1,4 +1,5 @@
 import type pg from 'pg';
+import { sqlPosicionPublica, sqlUbicacionAproximada } from '../mapa/ubicacion-publica.js';
 import type {
   CrearCotizacionSpotInput,
   CotizacionSpotResponse,
@@ -137,7 +138,7 @@ export class SpotService {
    * Consulta la Pizarra Spot filtrando exclusivamente cotizaciones vigentes.
    * Utiliza el índice compuesto (producto, vigencia_hasta DESC, establecimiento_id).
    */
-  async consultarPizarra(query: ConsultaPizarraQuery): Promise<{
+  async consultarPizarra(query: ConsultaPizarraQuery, viewerOrgId?: string): Promise<{
     total: number;
     cotizaciones: CotizacionSpotResponse[];
   }> {
@@ -174,6 +175,10 @@ export class SpotService {
     values.push(safeOffset);
     const offsetPlaceholder = `$${values.length}`;
 
+    values.push(viewerOrgId ?? null);
+    const visitantePlaceholder = `$${values.length}`;
+
+    // Misma política de privacidad que el mapa: establos ajenos en rejilla 0.01°.
     const sql = `
       SELECT
         cs.id,
@@ -192,8 +197,9 @@ export class SpotService {
         cs.fecha_registro,
         cs.vigencia_hasta,
         cs.verificado,
-        ST_Y(e.coordenadas::geometry) AS latitud,
-        ST_X(e.coordenadas::geometry) AS longitud,
+        ST_Y((${sqlPosicionPublica('e', visitantePlaceholder)})::geometry) AS latitud,
+        ST_X((${sqlPosicionPublica('e', visitantePlaceholder)})::geometry) AS longitud,
+        COALESCE(${sqlUbicacionAproximada('e', visitantePlaceholder)}, FALSE) AS ubicacion_aproximada,
         cs.created_at
       FROM cotizaciones_spot cs
       LEFT JOIN establecimientos e ON e.id = cs.establecimiento_id

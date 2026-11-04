@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import type pg from 'pg';
 import { MapaService, MapaError } from './mapa.service.js';
 import { createAuthMiddleware } from '../auth/auth.middleware.js';
@@ -12,6 +12,10 @@ export const mapaRoutes: FastifyPluginAsync<MapaRoutesOptions> = async (fastify,
   const { pool } = options;
   const mapaService = new MapaService(pool);
   const authenticate = createAuthMiddleware(pool);
+  // Ruta pública: si llega un token se valida; sin token se atiende como anónimo.
+  const optionalAuthenticate = async (request: FastifyRequest, reply: FastifyReply) => {
+    if (request.headers.authorization) return authenticate(request, reply);
+  };
 
   /**
    * POST /api/v1/establecimientos
@@ -58,6 +62,7 @@ export const mapaRoutes: FastifyPluginAsync<MapaRoutesOptions> = async (fastify,
    */
   fastify.get<{ Querystring: Record<string, string | undefined> }>(
     '/establecimientos/cercanos',
+    { preHandler: [optionalAuthenticate] },
     async (request, reply) => {
       const { lat, lon, radio_km, tipo, limit, offset } = request.query;
 
@@ -79,7 +84,7 @@ export const mapaRoutes: FastifyPluginAsync<MapaRoutesOptions> = async (fastify,
       };
 
       try {
-        const resultado = await mapaService.buscarCercanos(queryInput);
+        const resultado = await mapaService.buscarCercanos(queryInput, request.userSession?.activeOrganizationId);
         return reply.status(200).send(resultado);
       } catch (err: any) {
         if (err instanceof MapaError) {
