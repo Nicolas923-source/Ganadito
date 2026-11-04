@@ -95,3 +95,4 @@ Tarea V03/V04, editor Víctor: `PanelPujaRapida.svelte` y `tests/e2e/auctions.sp
 - [x] Reproducir rojo A→B→A (historial esperaba 0 filas y recibió 1); A→B sin retorno ya era correcto.
 - [x] Añadir guardia de destrucción del panel en éxito/error/finalización; ambas regresiones verdes.
 - [x] Revisión independiente correcta; typecheck/build, 5 unitarios, 2 proxy, 58 fixtures y 2 HTTP correctos. Preparar publicación en #37; su evidencia enlaza la CI del HEAD final.
+- [x] Evitar CI duplicada de ramas de trabajo: PR para cualquier base, push solo en main y ejecución manual; mantener los tres jobs y confirmar el HEAD final en GitHub.

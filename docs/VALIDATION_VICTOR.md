@@ -10,6 +10,8 @@ Se reprodujo un defecto V03/V04: enviar una puja en A, navegar a B y regresar a 
 
 Checks locales del cambio: typecheck completo (web sin errores/advertencias), build completo, 5/5 unitarios web, 2/2 proxy compilado, 58/58 navegador con fixtures y 2/2 modo HTTP. Las dos regresiones esperan la entrega completa del recibo y navegación SPA. Revisión independiente sin bloqueantes; `git diff --check` correcto. La CI del HEAD publicado y el recorrido real se enlazan en [#37](https://github.com/Nicolas923-source/Ganadito/pull/37). No se probaron servicios reales contra PostgreSQL local existente ni Neon.
 
+CI: las ramas de trabajo se verifican por `pull_request`, sin filtro de base; `push` se conserva para `main` y `workflow_dispatch` para ejecución manual. Esto evita disparar dos suites del mismo SHA por push y PR, que dejaban una ejecución cancelada y un resumen visual confuso. Se conservan los tres jobs y sus guardias de aislamiento.
+
 ## Integración posterior con N01–N05 — 4 de noviembre de 2026
 
 Contrato #29 integrado en `2ffe7d4`; baseline original de Nicolás `26e8179` (N05 y dependencias), reunido con #35/#36 en la rama aislada `feature/victor/v04-v06-integracion-nicolas`. Esto no fusiona los PR de código en main ni acredita resolución de los [hallazgos](REVIEW_NICOLAS_2026-11-04.md).

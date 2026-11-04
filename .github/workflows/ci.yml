@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - main
-      # Also verify isolated integration branches before their stacked PR can run.
-      - 'feature/victor/**'
-      - 'codex/**'
   pull_request:
   workflow_dispatch:
 
