@@ -266,4 +266,88 @@ describe('Autenticación, JWT y Contexto Organizacional Dual (RBAC)', () => {
     assert.ok(body.activeContext);
     assert.strictEqual(body.memberships.length, 2, 'El usuario debe registrar 2 membresías activables');
   });
+
+  test('7. Blindaje de autoregistro: sólo se admiten roles comerciales COMPRADOR y VENDEDOR', async () => {
+    // 7.1 Intento de autoregistro con rol ADMIN -> 400 Bad Request
+    const adminRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      payload: {
+        email: `fake_admin_${Date.now()}@test.com`,
+        password: 'PasswordSegura2026!',
+        nombre: 'Intento Admin',
+        rol_inicial: 'ADMIN'
+      }
+    });
+    assert.strictEqual(adminRes.statusCode, 400);
+    const adminBody = adminRes.json();
+    assert.strictEqual(adminBody.error, 'AuthError');
+    assert.match(adminBody.message, /Rol no permitido para autoregistro/i);
+
+    // 7.2 Intento de autoregistro con rol AUDITOR -> 400 Bad Request
+    const auditorRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      payload: {
+        email: `fake_auditor_${Date.now()}@test.com`,
+        password: 'PasswordSegura2026!',
+        nombre: 'Intento Auditor',
+        rol_inicial: 'AUDITOR'
+      }
+    });
+    assert.strictEqual(auditorRes.statusCode, 400);
+    const auditorBody = auditorRes.json();
+    assert.strictEqual(auditorBody.error, 'AuthError');
+    assert.match(auditorBody.message, /Rol no permitido para autoregistro/i);
+
+    // 7.3 Intento de autoregistro con rol inválido o arbitrario -> 400 Bad Request
+    const invalidRoleRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      payload: {
+        email: `fake_superuser_${Date.now()}@test.com`,
+        password: 'PasswordSegura2026!',
+        nombre: 'Intento Superuser',
+        rol_inicial: 'SUPERUSER'
+      }
+    });
+    assert.strictEqual(invalidRoleRes.statusCode, 400);
+    const invalidRoleBody = invalidRoleRes.json();
+    assert.strictEqual(invalidRoleBody.error, 'AuthError');
+    assert.match(invalidRoleBody.message, /Rol no permitido para autoregistro/i);
+
+    // 7.4 Registro válido explícito como COMPRADOR -> 201 Created
+    const buyerEmail = `comprador_valido_${Date.now()}@test.com`;
+    const buyerRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      payload: {
+        email: buyerEmail,
+        password: 'PasswordSegura2026!',
+        nombre: 'Comprador Valido',
+        rol_inicial: 'COMPRADOR'
+      }
+    });
+    assert.strictEqual(buyerRes.statusCode, 201);
+    const buyerBody = buyerRes.json();
+    assert.strictEqual(buyerBody.active_context.rol, 'COMPRADOR');
+    assert.strictEqual(buyerBody.user.email, buyerEmail);
+
+    // 7.5 Registro válido explícito como VENDEDOR -> 201 Created
+    const sellerEmail = `vendedor_valido_${Date.now()}@test.com`;
+    const sellerRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      payload: {
+        email: sellerEmail,
+        password: 'PasswordSegura2026!',
+        nombre: 'Vendedor Valido',
+        rol_inicial: 'VENDEDOR'
+      }
+    });
+    assert.strictEqual(sellerRes.statusCode, 201);
+    const sellerBody = sellerRes.json();
+    assert.strictEqual(sellerBody.active_context.rol, 'VENDEDOR');
+    assert.strictEqual(sellerBody.user.email, sellerEmail);
+  });
 });
