@@ -76,3 +76,12 @@ Transferencia interna: el implementador de tiempo real edita `apps/web/src/lib/a
 - #29 es el único PR autorizado para fusionar: revisión y CI verificadas; ya está en `main`. Los PR de código siguen abiertos.
 - Rama de verificación combina commits originales de Nicolás con la entrega web anterior; no cambia sus archivos y no se promoverá mientras permanezcan bloqueantes.
 - Implementación `d38d304`, publicada en borrador [#37](https://github.com/Nicolas923-source/Ganadito/pull/37), base N05 `26e8179`. CI `41884285818` verde sobre `17a3af7`: 108 backend, 5 unitarios web, 36 configuración, 2 proxy, 56 navegador fixture, 2 HTTP y 1 recorrido real web/API/worker. La CI final se consulta en el PR. Los hallazgos de Nicolás y su revisión cruzada siguen pendientes; la tarea de integración no equivale a aceptación del producto.
+
+## Seguimiento: guías de revisión y pendientes de Víctor
+
+Alcance: `README.md`, `docs/GIT_WORKFLOW.md`, `docs/DEVELOPMENT.md`, este plan y el informe de revisión. Mantener los fuentes de Nicolás intactos. Las guías entregadas por el propietario reservan Approve a la persona revisora; conservar los dictámenes favorables como COMMENT y los defectos como REQUEST_CHANGES.
+
+- [x] Revisar SHA y diff completos de #27/#25/#28/#31, contrastar CI exacta o integrada y publicar dictámenes sin duplicar commits.
+- [x] Reproducir en memoria y comunicar el efecto de migraciones antes de validar configuración en #30.
+- [x] Actualizar README y diagnóstico con arranque/órdenes ya implementados; registrar orden, SHA y aprobación humana.
+- [x] Verificar referencias y comandos documentados (25 enlaces locales y 30 referencias a scripts), pasar las 36 pruebas de configuración y preparar el seguimiento para #37. La publicación y CI final quedan registradas en el PR.

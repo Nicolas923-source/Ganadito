@@ -153,7 +153,7 @@ La suite crea cuentas ficticias por API/UI, publica desde la web, envía una puj
 | 401 o sesión expirada | Mostrar expiración y volver a acceder; no renovar ni fabricar permisos localmente. |
 | 403 o contexto cambió | Mostrar falta de acceso/contexto; comprobar sesión y membresía con la API. |
 | WS desconectado | Revisar origen y Upgrade del proxy; recuperar snapshot oficial tras conectar antes de reanudar la interacción. |
-| Órdenes no disponibles | Falta GET en la base; solicitar contrato a Nicolás, conservar estado explícito sin inventar orden. |
+| Órdenes no disponibles | La integración N04 ya incluye GET de lista/detalle. Revisar sesión, organización, estado HTTP y destino API; un 404 no revela pertenencia. Conservar error o ausencia sin inventar órdenes. |
 | Puerto 4173 ocupado | Detener el proceso propio o acordar otro puerto y actualizar su configuración; no terminar procesos ajenos. |
 | Fallan tests de DB/Redis | Confirmar servicios y variables del entorno de pruebas; registrar fallo completo. |
 
