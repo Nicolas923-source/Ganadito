@@ -30,37 +30,59 @@ export function esHostSeedPermitido(hostname: string): boolean {
 }
 
 /**
+ * Parámetros de la cadena de conexión que pg (pg-connection-string) acepta para sustituir
+ * el destino indicado en la autoridad de la URL. Si se permitieran, una URL que parece
+ * local (`postgres://localhost/db?host=prod.example.com`) conectaría a otro servidor.
+ */
+const PARAMETROS_DESTINO_PROHIBIDOS = new Set(['host', 'hostaddr', 'port', 'socket']);
+const PROTOCOLOS_PERMITIDOS = new Set(['postgres:', 'postgresql:']);
+
+/**
+ * Valida el destino efectivo del seed SIN abrir conexiones. Devuelve el motivo del
+ * rechazo o null si el destino es local y está permitido.
+ */
+export function validarDestinoSeed(env: NodeJS.ProcessEnv = process.env): string | null {
+  if (env.NODE_ENV === 'production') {
+    return 'No se permite ejecutar seeders con NODE_ENV="production".';
+  }
+
+  const dbUrl = env.DATABASE_URL;
+  if (dbUrl) {
+    let url: URL;
+    try {
+      url = new URL(dbUrl);
+    } catch {
+      return 'DATABASE_URL no es una URL válida.';
+    }
+    if (!PROTOCOLOS_PERMITIDOS.has(url.protocol)) {
+      return `DATABASE_URL usa un protocolo no permitido (${url.protocol}).`;
+    }
+    for (const nombre of url.searchParams.keys()) {
+      if (PARAMETROS_DESTINO_PROHIBIDOS.has(nombre.toLowerCase())) {
+        return `DATABASE_URL incluye el parámetro "${nombre}", que sustituye el destino de la conexión.`;
+      }
+    }
+    if (!url.hostname || !esHostSeedPermitido(decodeURIComponent(url.hostname))) {
+      return `DATABASE_URL no apunta a un host local permitido (${url.hostname || 'sin host'}).`;
+    }
+    return null;
+  }
+
+  const dbHost = env.DATABASE_HOST ?? 'localhost';
+  if (!esHostSeedPermitido(dbHost)) {
+    return `DATABASE_HOST (${dbHost}) no es un host local permitido.`;
+  }
+  return null;
+}
+
+/**
  * Guardia de seguridad para impedir ejecuciones accidentales en producción
- * o sobre bases de datos no locales.
+ * o sobre bases de datos no locales. Se ejecuta antes de toda conexión y migración.
  */
 export function assertSafeSeedEnvironment(): void {
-  if (process.env.NODE_ENV === 'production') {
-    console.error('⛔ [ERROR CRÍTICO] No se permite ejecutar seeders con NODE_ENV="production". Abortando.');
-    process.exit(1);
-  }
-
-  const dbUrl = process.env.DATABASE_URL;
-  if (dbUrl) {
-    let hostname: string | null = null;
-    try {
-      hostname = new URL(dbUrl).hostname;
-    } catch {
-      hostname = null;
-    }
-    if (!hostname || !esHostSeedPermitido(hostname)) {
-      console.error(
-        `⛔ [ERROR CRÍTICO] DATABASE_URL no apunta a un host local permitido (${hostname ?? 'URL inválida'}). Use SEED_ALLOWED_HOSTS para autorizar otro host explícitamente. Abortando.`
-      );
-      process.exit(1);
-    }
-    return;
-  }
-
-  const dbHost = process.env.DATABASE_HOST ?? 'localhost';
-  if (!esHostSeedPermitido(dbHost)) {
-    console.error(
-      `⛔ [ERROR CRÍTICO] DATABASE_HOST (${dbHost}) no es un host local permitido. Use SEED_ALLOWED_HOSTS para autorizarlo explícitamente. Abortando.`
-    );
+  const motivo = validarDestinoSeed();
+  if (motivo) {
+    console.error(`⛔ [ERROR CRÍTICO] ${motivo} Use SEED_ALLOWED_HOSTS para autorizar otro host explícitamente. Abortando.`);
     process.exit(1);
   }
 }
