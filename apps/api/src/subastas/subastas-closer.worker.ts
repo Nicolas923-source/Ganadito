@@ -84,15 +84,26 @@ export class SubastasCloserWorker {
     }, this.intervalMs);
   }
 
-  async stop(): Promise<void> {
+  /**
+   * Detiene el bucle y espera el ciclo en curso como máximo `timeoutMs`.
+   * Devuelve `true` si el ciclo terminó a tiempo y `false` si se abandonó.
+   * Abandonarlo es seguro: lo que no se confirmó en PostgreSQL se reintenta
+   * en el siguiente arranque (no hay estado transaccional en memoria).
+   */
+  async stop(timeoutMs = 5000): Promise<boolean> {
     this.active = false;
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
     }
-    while (this.inFlight) {
+    const limite = Date.now() + Math.max(0, timeoutMs);
+    while (this.inFlight && Date.now() < limite) {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
+    if (this.inFlight && this.logger) {
+      console.warn(`[%s] stop(): el ciclo en curso no terminó en ${timeoutMs} ms; se abandona.`, 'SubastasCloserWorker');
+    }
+    return !this.inFlight;
   }
 
   get isRunning(): boolean {

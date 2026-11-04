@@ -35,7 +35,7 @@ function envFlag(name: string): boolean | undefined {
  * comprueba PostgreSQL, aplica migraciones si corresponde, levanta workers y escucha.
  */
 export async function startServer(options: StartServerOptions = {}): Promise<ServerHandle> {
-  const port = options.port ?? Number(process.env.API_PORT ?? 3000);
+  const port = options.port ?? Number(process.env.API_PORT ?? 4000);
   const host = options.host ?? process.env.API_HOST ?? '0.0.0.0';
   const shouldMigrate =
     options.runMigrations ?? envFlag('RUN_MIGRATIONS_ON_START') ?? process.env.NODE_ENV !== 'production';
@@ -73,7 +73,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
     closing = (async () => {
       app.log.info(`[server] Apagado ordenado (${reason})`);
       // 1) dejar de tomar trabajo nuevo, 2) cerrar HTTP/WS, 3) liberar recursos.
-      await Promise.allSettled([outboxWorker?.stop(), closerWorker?.stop()]);
+      // Cada worker espera su ciclo en curso como máximo 5 s; el tope global sigue siendo 10 s.
+      await Promise.allSettled([outboxWorker?.stop(5000), closerWorker?.stop(5000)]);
       await app.close();
       await Promise.allSettled([closeRedis(), closePool()]);
     })();

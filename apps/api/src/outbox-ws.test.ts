@@ -360,4 +360,25 @@ describe('Procesador Transactional Outbox y Difusión WebSocket en Tiempo Real',
       `No deben ejecutarse más ticks tras stop() (inicial: ${ticksAtStop}, posterior: ${tickCount})`
     );
   });
+
+  test('6. stop() tiene un límite: un ciclo colgado no bloquea el apagado', async () => {
+    let liberar!: () => void;
+    const colgado = new Promise<void>((resolve) => (liberar = resolve));
+    const worker = new OutboxWorker({ pool, publisher: redisPublisher, pollIntervalMs: 10_000, workerId: 'hang-test-worker' });
+    worker.tick = async () => {
+      await colgado;
+      return { totalLeidos: 0 } as Awaited<ReturnType<OutboxWorker['tick']>>;
+    };
+
+    worker.start();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const inicio = Date.now();
+    const drenado = await worker.stop(100);
+    const duracion = Date.now() - inicio;
+
+    assert.strictEqual(drenado, false, 'stop() debe informar que abandonó el ciclo en curso');
+    assert.ok(duracion < 1000, `stop() debe respetar el límite (tardó ${duracion} ms)`);
+    assert.strictEqual(worker.isRunning, false);
+    liberar();
+  });
 });
