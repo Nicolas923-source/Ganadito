@@ -33,6 +33,8 @@ export interface CotizacionSpotResponse {
   verificado: boolean;
   latitud?: number;
   longitud?: number;
+  /** true si latitud/longitud son aproximadas por privacidad (establo ajeno). */
+  ubicacion_aproximada?: boolean;
   created_at: string;
 }
 

@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import type pg from 'pg';
 import { SpotService, SpotError } from './spot.service.js';
 import { createAuthMiddleware } from '../auth/auth.middleware.js';
@@ -12,6 +12,10 @@ export const spotRoutes: FastifyPluginAsync<SpotRoutesOptions> = async (fastify,
   const { pool } = options;
   const spotService = new SpotService(pool);
   const authenticate = createAuthMiddleware(pool);
+  // Ruta pública: si llega un token se valida; sin token se atiende como anónimo.
+  const optionalAuthenticate = async (request: FastifyRequest, reply: FastifyReply) => {
+    if (request.headers.authorization) return authenticate(request, reply);
+  };
 
   /**
    * POST /api/v1/cotizaciones
@@ -58,6 +62,7 @@ export const spotRoutes: FastifyPluginAsync<SpotRoutesOptions> = async (fastify,
    */
   fastify.get<{ Querystring: Record<string, string | undefined> }>(
     '/cotizaciones/pizarra',
+    { preHandler: [optionalAuthenticate] },
     async (request, reply) => {
       const { producto, ubigeo, categoria, calidad, limit, offset } = request.query;
 
@@ -71,7 +76,7 @@ export const spotRoutes: FastifyPluginAsync<SpotRoutesOptions> = async (fastify,
       };
 
       try {
-        const resultado = await spotService.consultarPizarra(queryInput);
+        const resultado = await spotService.consultarPizarra(queryInput, request.userSession?.activeOrganizationId);
         return reply.status(200).send(resultado);
       } catch (err: any) {
         if (err instanceof SpotError) {

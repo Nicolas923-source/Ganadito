@@ -22,11 +22,15 @@ import { taxRoutes } from './integraciones/tax.routes.js';
 import { SunatAdapter } from './integraciones/sunat.adapter.js';
 import { CavaliAdapter } from './integraciones/cavali.adapter.js';
 import { checkHealth } from './health.js';
+import { redactarUrl, serializarPeticion } from './log-redaction.js';
+import type { Writable } from 'node:stream';
 
 export interface AppOptions {
   pool?: pg.Pool;
   jwtSecret?: string;
   logger?: boolean;
+  /** Destino alternativo de los logs (solo pruebas). */
+  logStream?: Writable;
   redisSubscriber?: Redis;
   wsHub?: SubastaWsHub;
   aiClient?: AiClientService;
@@ -57,8 +61,21 @@ export function resolveJwtSecret(override?: string): string {
 }
 
 export function buildApp(options: AppOptions = {}): FastifyInstance {
+  // Los logs nunca registran la URL cruda: puede llevar ?access_token= (WS de subastas).
   const app = Fastify({
-    logger: options.logger ?? false
+    logger: options.logger
+      ? {
+          serializers: { req: serializarPeticion },
+          ...(options.logStream ? { stream: options.logStream } : {})
+        }
+      : false
+  });
+
+  // El 404 por defecto de Fastify escribe la URL cruda en el log y en la respuesta.
+  app.setNotFoundHandler((request, reply) => {
+    const mensaje = `Route ${request.method}:${redactarUrl(request.url)} not found`;
+    request.log.info(mensaje);
+    reply.code(404).send({ message: mensaje, error: 'Not Found', statusCode: 404 });
   });
 
   const pool = options.pool ?? getPool();

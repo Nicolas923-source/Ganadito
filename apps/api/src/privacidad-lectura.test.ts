@@ -96,6 +96,52 @@ describe('N05: privacidad de ubicación en mapa y vista pública del pasaporte',
     }
   });
 
+  test('2b. Pizarra Spot: misma privacidad que el mapa para anónimo, organización ajena y dueña', async () => {
+    const pub = await app.inject({
+      method: 'POST',
+      url: '/api/v1/cotizaciones',
+      headers: auth(duenoToken),
+      payload: {
+        establecimiento_id: establoId,
+        producto: 'GANADO_EN_PIE',
+        categoria: `PRIV-${crypto.randomUUID().slice(0, 6)}`,
+        calidad: 'EXTRA',
+        unidad_medida: 'KG_VIVO',
+        precio_unitario: 9.1,
+        vigencia_hasta: new Date(Date.now() + 86400000).toISOString()
+      }
+    });
+    assert.strictEqual(pub.statusCode, 201, pub.body);
+    const { id: cotizacionId, categoria } = pub.json();
+
+    async function leer(headers: Record<string, string> = {}) {
+      const r = await app.inject({
+        method: 'GET',
+        url: `/api/v1/cotizaciones/pizarra?producto=GANADO_EN_PIE&categoria=${categoria}`,
+        headers
+      });
+      assert.strictEqual(r.statusCode, 200, r.body);
+      const c = r.json().cotizaciones.find((x: any) => x.id === cotizacionId);
+      assert.ok(c, 'La cotización aparece en la pizarra');
+      return c;
+    }
+
+    const latExacta = BASE.lat + 0.001234;
+    for (const headers of [{}, auth(ajenoToken)]) {
+      const c = await leer(headers);
+      assert.strictEqual(c.ubicacion_aproximada, true);
+      assert.ok(Math.abs(c.latitud - latExacta) > 1e-6, 'Spot no debe revelar la latitud exacta del establo ajeno');
+      assert.ok(Math.abs(c.latitud * 100 - Math.round(c.latitud * 100)) < 1e-6, `lat ${c.latitud} no está en la rejilla`);
+      assert.ok(Math.abs(c.longitud * 100 - Math.round(c.longitud * 100)) < 1e-6);
+    }
+
+    const propia = await leer(auth(duenoToken));
+    assert.strictEqual(propia.ubicacion_aproximada, false);
+    assert.ok(Math.abs(propia.latitud - latExacta) < 1e-9);
+
+    await pool.query('DELETE FROM cotizaciones_spot WHERE id = $1', [cotizacionId]);
+  });
+
   test('3. Un token inválido en la ruta pública responde 401 (no se degrada a anónimo)', async () => {
     const r = await app.inject({
       method: 'GET',
