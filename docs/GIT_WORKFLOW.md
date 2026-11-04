@@ -1,120 +1,83 @@
-# Ganadito — Flujo de Trabajo con Git y GitHub
+# Ramas, revisión e integración
 
-Este documento establece las reglas obligatorias de control de versiones y colaboración para el equipo de desarrollo de Ganadito.
+Un repositorio oficial, dos clones y una rama por tarea. Víctor coordina la cola de PR. La [matriz de propiedad](OWNERSHIP.md) y sus excepciones se aplican también cuando una rama está aislada: Git no bloquea la edición de rutas ajenas.
 
----
+## Empezar una tarea
 
-## 1. Estrategia de ramas
-
-- **`main`**: Rama protegida principal. Contiene únicamente código integrado, validado por CI y aprobado. Prohibido hacer push directo a `main`.
-- **`feature/<nombre>`**: Para el desarrollo de nuevas funcionalidades (ej. `feature/mapa-comercial`).
-- **`fix/<nombre>`**: Para corrección de defectos o bugs (ej. `fix/auth-session`).
-- **`hotfix/<nombre>`**: Para reparaciones urgentes y críticas sobre `main`.
-- **`chore/<nombre>`**: Para tareas de mantenimiento, configuración, tooling o dependencias (ej. `chore/monorepo-setup`).
-- **`docs/<nombre>`**: Para actualización de documentación técnica (ej. `docs/installation-guide`).
-
----
-
-## 2. Convención de commits
-
-Se utiliza la especificación **Conventional Commits**. Los mensajes deben ser claros, en tiempo presente y con el formato:
-
-```text
-<tipo>: <descripción concisa>
-
-[cuerpo opcional detallando el motivo o contexto]
+```bash
+git switch main
+git pull --ff-only origin main
+git switch -c codex/victor/v01-base-web
 ```
 
-### Tipos permitidos
-- `feat`: Nueva característica de cara al usuario o contrato de API.
-- `fix`: Corrección de un fallo.
-- `docs`: Modificaciones exclusivamente en documentación.
-- `refactor`: Cambio de código que no corrige un bug ni añade una feature.
-- `test`: Añadir o corregir pruebas automatizadas.
-- `chore`: Modificaciones en procesos de construcción, herramientas o librerías auxiliares.
-- `ci`: Cambios en flujos de integración continua (GitHub Actions).
-- `perf`: Mejoras de rendimiento demostrables.
+Usar nombres de tarea, por ejemplo `codex/victor/v06-navegador` o `feature/nicolas/n01-arranque-api`, sin ramas personales permanentes. Registrar editor, rutas permitidas, contrato y aceptación antes de editar. Si una ruta no está asignada, documentar una reserva temporal con su responsable y condición de fin; una petición de cambio no autoriza editarla.
 
-> ❌ **Prohibidos mensajes genéricos:** Evita commits como `actualización`, `cambios varios`, `fix bug`, `listo`.
+## Separar entregas
 
----
+1. Nicolás publica el PR de contrato y ejemplos; Víctor lo revisa contra las necesidades de la pantalla. Integrarlo antes de cambios dependientes.
+2. Víctor publica dependencias en PR separado, con manifiestos y lockfile coherentes. Nicolás solicita biblioteca, versión y motivo antes de instalar. Tras integrarlo, ambos actualizan ramas y ejecutan `npm ci`.
+3. Víctor publica integración (scripts, variables, CI y documentación) separada del backend. Nicolás revisa los paquetes afectados.
+4. Cada autor implementa su entrega en sus rutas; cada autor corrige sus hallazgos. Ver [cola completa](VICTOR_DELIVERY.md).
 
-## 3. Ciclo de trabajo diario
+Los datos de ejemplo se identifican y se aíslan del modo operativo. El frontend no modifica API, SQL o contratos para desbloquearse ni confirma decisiones comerciales sin respuesta del servidor.
 
-1. **Partir siempre de la versión más reciente de `main`:**
-   ```bash
-   git switch main
-   git pull --ff-only origin main
-   ```
+## Comprobar antes de commit y PR
 
-2. **Crear una rama con nombre descriptivo:**
-   ```bash
-   git switch -c feature/nombre-de-la-tarea
-   ```
+```bash
+git status --short
+git diff
+git diff --cached
+git diff --name-only origin/main...HEAD
+```
 
-3. **Realizar cambios y commits pequeños y cohesivos:**
-   ```bash
-   git status
-   git diff
-   git add ruta/al/archivo
-   git commit -m "feat: implementar contrato de pujas"
-   ```
+La comparación entre ramas muestra lo confirmado; `status` y `diff` también detectan trabajo pendiente. Comparar todas las rutas con el alcance autorizado y preparar solo las de la tarea:
 
-4. **Mantener la rama sincronizada:**
-   ```bash
-   git fetch origin
-   git merge origin/main
-   # O alternativamente rebase si no se ha publicado la rama
-   ```
+```bash
+git add ruta/al/archivo
+git diff --cached
+git commit -m "feat: conectar consulta de lote al snapshot oficial"
+```
 
-5. **Ejecutar validaciones locales antes de enviar:**
-   ```bash
-   npm run typecheck
-   npm test
-   ```
+Usar Conventional Commits (`feat`, `fix`, `docs`, `test`, `chore`, `ci`, `refactor`, `perf`) y explicar el cambio concreto. Nunca incluir `.env`, JWT, tokens, claves, datos personales ni dumps.
 
-6. **Publicar la rama en GitHub y abrir Pull Request:**
-   ```bash
-   git push -u origin feature/nombre-de-la-tarea
-   ```
+## Verificar y publicar
 
----
+```bash
+npm ci
+npm run typecheck
+npm run lint
+npm test
+npm run build
+npm run test:e2e
+git push -u origin codex/victor/v01-base-web
+```
 
-## 4. Revisión y fusión de Pull Requests (PR)
+Ejecutar checks pertinentes con los servicios de prueba requeridos; registrar fallidos o no ejecutados. Instalar Chromium antes del primer e2e según [DEVELOPMENT.md](DEVELOPMENT.md). El PR usa la [plantilla](../.github/PULL_REQUEST_TEMPLATE.md) e incluye objetivo, rutas, contrato, dependencias, pruebas y limitaciones.
 
-- Cada PR debe completar la plantilla [`.github/PULL_REQUEST_TEMPLATE.md`](file:///d:/Copia%20-%20VISUAL%20CODE%20-%20Proyectos/Ganadito%20Versi%C3%B3n%201.0/.github/PULL_REQUEST_TEMPLATE.md).
-- Todos los checks de GitHub Actions (CI) deben estar en verde.
-- El segundo programador debe revisar el código y dejar comentarios o su aprobación.
-- Se recomienda el método **Squash and merge** para mantener un historial lineal y limpio en `main`.
-- Eliminar la rama remota tras la integración.
+| Autor | Revisor del código final |
+|---|---|
+| Víctor + Codex | Nicolás + Claude Code |
+| Nicolás + Claude Code | Víctor + Codex |
 
----
+Nadie aprueba su entrega. No editar la rama del compañero mientras trabaja. La revisión automática o de un asistente no sustituye la revisión cruzada. Un e2e con fixtures no demuestra integración API real.
 
-## 5. Colaboración entre dos programadores
+## Integrar uno por uno
 
-- Cada programador trabaja en ramas separadas e independientes.
-- Ninguno debe hacer push a la rama en curso del otro sin acuerdo previo.
-- Para inspeccionar o probar la rama del compañero:
-  ```bash
-  git fetch origin
-  git switch --track origin/feature/rama-del-companero
-  ```
-- No compartir credenciales, claves SSH ni tokens personales.
+Exigir CI aprobada del SHA final, conversaciones resueltas, revisión cruzada y evidencia web + API cuando corresponda. No hacer push directo a `main`. Las protecciones de GitHub deben comprobarse en el repositorio; este documento no las activa ni afirma que estén configuradas.
 
----
+Víctor coordina primero contratos/dependencias, después backend y por último conexión final web. Una web aislada puede integrarse antes si no rompe el modo operativo y declara sus dependencias. Tras cada fusión, el autor del siguiente PR incorpora la versión actual:
 
-## 6. Protocolo de emergencia ante fuga de secretos
+```bash
+git fetch origin
+git merge origin/main
+```
 
-> [!CAUTION]
-> Si por error se commitea un secreto (claves privadas, tokens de API, contraseñas, URLs de base de datos con credenciales reales):
+Repetir checks afectados y revisar el diff final. Resolver conflictos con ambos responsables; no seleccionar automáticamente un archivo completo para ganar el conflicto. Si una rama publicada requiere reescribir historia, coordinarlo primero; no usar force-push como solución rutinaria.
 
-1. **Rotación inmediata del secreto:**
-   Accede de inmediato al proveedor (PostgreSQL, proveedor de pagos, nube) y **revoca / rota la credencial expuesta**. Asume que ya ha sido comprometida.
-2. **Borrar el archivo en un commit posterior NO ES SUFICIENTE:**
-   El secreto permanece registrado en el historial de Git de por vida a menos que se purgue.
-3. **Comunicación al equipo:**
-   Notifica inmediatamente al propietario y al equipo antes de forzar cambios en ramas remotas.
-4. **Limpieza del historial:**
-   Utiliza herramientas especializadas como `git-filter-repo` o `BFG Repo-Cleaner` para eliminar permanentemente el archivo o cadena del historial de Git en coordinación con el equipo.
-5. **Restablecer ramas:**
-   Todos los colaboradores deberán reiniciar sus clones locales a partir del nuevo historial limpio.
+## Secretos expuestos
+
+Revocar o rotar primero el secreto comprometido, coordinar el incidente con el propietario y comprobar el alcance. Borrar el archivo en otro commit no elimina el secreto del historial. Cualquier limpieza de historial, force-push o restauración de datos requiere coordinación y autorización explícita; no improvisar esos comandos desde una corrección web.
+
+## Cierre
+
+La tarea se cierra cuando coinciden autor/rutas, contrato y dependencias están identificados, pruebas y CI pasan, no hay bloqueantes y el compañero revisó el código final. Si conecta pantalla y API, probarlas juntas con datos ficticios. Registrar cambios de entorno/esquema y recuperación en [staging](../infrastructure/deployment/README.md). Pagos reales y servicios externos no habilitados permanecen desactivados.

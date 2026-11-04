@@ -1,52 +1,41 @@
-# Ganadito — Plataforma Ganadera y Comercial
+# Ganadito
 
-> **Estado actual del proyecto:** Fase 1 — Preparación oficial del repositorio y entorno de desarrollo. No apto ni destinado aún para producción. No se ha implementado código funcional de negocio.
+Plataforma ganadera y comercial construida como monolito modular: SvelteKit/TypeScript en `apps/web`, Fastify/TypeScript en `apps/api`, contratos en `packages/contracts` y PostgreSQL/PostGIS como autoridad transaccional. Redis se usa para caché y difusión de eventos.
 
----
+El recorrido inicial es acceso y organización → lote → puja → cierre → orden pendiente de pago. La preparación web y sus pruebas aisladas no acreditan todavía el recorrido integrado. En la base revisada `dde293b`, la API tiene rutas y pruebas, pero su script `dev` no inicia un servidor HTTP; faltan contratos de lectura de listado de subastas y de órdenes. Ver [brechas de integración](docs/CONTRACT_REVIEW.md). Producción, cobros reales e integraciones externas no habilitadas permanecen desactivados.
 
-## 1. Visión general
+## Desarrollo web
 
-**Ganadito** es una plataforma digital integral orientada a modernizar y dinamizar el ecosistema comercial ganadero en el Perú, facilitando la interacción transparente y confiable entre ganaderos, compradores, camales, transportistas y entidades del sector.
+Se requiere Node según [.nvmrc](.nvmrc) y npm compatible con [package.json](package.json). Instalar el lockfile desde la raíz:
 
-## 2. Arquitectura de alto nivel
+```bash
+npm ci
+npm run dev:web -- --host 127.0.0.1 --port 4173 --strictPort
+```
 
-El proyecto está diseñado bajo un modelo de **monolito modular con arquitectura hexagonal y CQRS selectivo**:
-- **`apps/web`**: Frontend web interactivo construido con **SvelteKit** y **TypeScript**.
-- **`apps/api`**: Backend transaccional de alto rendimiento construido con **Node.js**, **Fastify** y **TypeScript**.
-- **`packages/contracts`**: Esquemas de datos, DTOs y contratos compartidos fuertemente tipados.
-- **`packages/shared`**: Utilidades puras transversales.
-- **`packages/config`**: Configuraciones compartidas de compilación, linter y tipos.
-- **`services/ai`**: Servicio satélite para modelos de visión artificial y análisis de ganado (**Python 3.11/3.12**), desacoplado del núcleo transaccional.
-- **Persistencia**: **PostgreSQL 16** con extensión **PostGIS 3.4** como única fuente de verdad transaccional y geoespacial.
-- **Caché y mensajería efímera**: **Redis 7** (sin rol de persistencia autoritativa).
+La web consulta la API configurada; una API ausente produce un estado de error visible. Para REST al mismo origen, dejar `PUBLIC_API_URL` vacío y configurar `API_INTERNAL_URL` en el servidor web. La guía explica el proxy de desarrollo y la configuración WS; no se sustituyen fallos por datos ficticios.
 
----
+## Validación
 
-## 3. Requisitos de desarrollo verificados
+```bash
+npm run typecheck
+npm run lint
+npm test
+npm run build
+npx playwright install --with-deps chromium
+npm run test:e2e
+```
 
-| Herramienta | Versión verificada en entorno |
-|---|---|
-| **Node.js** | `v24.20.0` (fijado en `.nvmrc`) |
-| **npm** | `11.19.0` |
-| **Git** | `2.56.0` |
-| **Python** | `3.12.8` (para `services/ai`) |
-| **Docker Engine** | `29.7.2` |
-| **Docker Compose** | Compatible con v2 |
+Los tests backend requieren PostgreSQL/PostGIS y Redis aislados. Los e2e de navegador usan fixtures identificados y prueban la interfaz; no acreditan permisos, concurrencia ni persistencia de una API real. Consultar resultados y límites del SHA final en CI y en el PR. No almacenar secretos ni datos reales en reportes.
 
----
+## Trabajo entre Víctor y Nicolás
 
-## 4. Guías y Documentación
+- [Instalación, comandos y variables](docs/DEVELOPMENT.md).
+- [Propiedad de archivos y reservas](docs/OWNERSHIP.md).
+- [Entregas V01-V06 y cola de PR](docs/VICTOR_DELIVERY.md).
+- [Inventario de contratos y solicitudes a Nicolás](docs/CONTRACT_REVIEW.md).
+- [Ramas, revisión cruzada e integración](docs/GIT_WORKFLOW.md).
+- [Staging, versión y recuperación](infrastructure/deployment/README.md).
+- [Arquitectura](docs/ARCHITECTURE.md) y [reglas de agentes](AGENTS.md).
 
-Para comenzar a trabajar en el proyecto, consulta la documentación oficial en el directorio `docs/`:
-
-- 🚀 [**Guía de instalación y entorno local (`docs/DEVELOPMENT.md`)**](file:///d:/Copia%20-%20VISUAL%20CODE%20-%20Proyectos/Ganadito%20Versi%C3%B3n%201.0/docs/DEVELOPMENT.md): Instrucciones paso a paso para configurar tu máquina, variables de entorno, Docker y comandos de ejecución.
-- 🌿 [**Flujo de trabajo y Git (`docs/GIT_WORKFLOW.md`)**](file:///d:/Copia%20-%20VISUAL%20CODE%20-%20Proyectos/Ganadito%20Versi%C3%B3n%201.0/docs/GIT_WORKFLOW.md): Reglas de ramas, commits convencionales, flujo de Pull Requests y protocolo ante fuga de secretos.
-- 🏛️ [**Arquitectura técnica y límites (`docs/ARCHITECTURE.md`)**](file:///d:/Copia%20-%20VISUAL%20CODE%20-%20Proyectos/Ganadito%20Versi%C3%B3n%201.0/docs/ARCHITECTURE.md): Principios arquitectónicos, responsabilidades por módulo y decisiones registradas.
-- 🤖 [**Reglas operativas para Agentes de IA (`AGENTS.md`)**](file:///d:/Copia%20-%20VISUAL%20CODE%20-%20Proyectos/Ganadito%20Versi%C3%B3n%201.0/AGENTS.md): Directrices y prioridades de trabajo para asistentes automatizados en Antigravity.
-
----
-
-## 5. Reporte de incidencias y contribución
-
-- Para proponer nuevas funciones o reportar fallos, abre un Issue en GitHub utilizando las plantillas disponibles en [`.github/ISSUE_TEMPLATE/`](file:///d:/Copia%20-%20VISUAL%20CODE%20-%20Proyectos/Ganadito%20Versi%C3%B3n%201.0/.github/ISSUE_TEMPLATE/).
-- Todo cambio debe integrarse a través de Pull Request siguiendo la plantilla [`.github/PULL_REQUEST_TEMPLATE.md`](file:///d:/Copia%20-%20VISUAL%20CODE%20-%20Proyectos/Ganadito%20Versi%C3%B3n%201.0/.github/PULL_REQUEST_TEMPLATE.md).
+Cada entrega requiere rutas asignadas, contrato identificado, pruebas pertinentes y revisión del otro programador. Las dependencias se publican en PR separado. Reportar incidencias usando las [plantillas](.github/ISSUE_TEMPLATE/) y describir alcance, evidencia y limitaciones en el [PR](.github/PULL_REQUEST_TEMPLATE.md).

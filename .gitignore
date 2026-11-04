@@ -11,6 +11,8 @@ dist/
 
 # Cobertura y reportes de pruebas
 coverage/
+playwright-report/
+test-results/
 .nyc_output/
 .pytest_cache/
 .mypy_cache/

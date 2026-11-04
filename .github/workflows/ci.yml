@@ -5,13 +5,19 @@ on:
     branches:
       - main
   pull_request:
-    branches:
-      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate:
     name: Validar Monorepo
     runs-on: ubuntu-latest
+    timeout-minutes: 25
 
     services:
       postgres:
@@ -78,3 +84,43 @@ jobs:
 
       - name: Compilación (Build)
         run: npm run build
+
+  browser:
+    name: Navegador con fixtures explícitos
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: 'true'
+      # Respuestas ficticias interceptadas por tests/e2e; no conecta Neon ni staging.
+      PUBLIC_API_URL: ''
+      API_INTERNAL_URL: http://127.0.0.1:4000
+
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Instalar dependencias limpias
+        run: npm ci
+
+      - name: Instalar Chromium y dependencias del sistema
+        run: npx playwright install --with-deps chromium
+
+      - name: Pruebas del navegador aisladas
+        run: npm run test:e2e
+
+      - name: Conservar evidencia del navegador
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: navegador-fixtures-${{ github.sha }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7

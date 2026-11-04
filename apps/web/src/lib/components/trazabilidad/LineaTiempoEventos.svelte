@@ -32,7 +32,7 @@
       nodoColor: 'bg-emerald-500 ring-emerald-500/30'
     },
     VACUNACION: {
-      titulo: 'Inmunización & Sanidad Oficial',
+      titulo: 'Vacunación registrada',
       icono: '💉',
       badgeClases: 'bg-teal-500/10 text-teal-400 border-teal-500/30',
       nodoColor: 'bg-teal-500 ring-teal-500/30'
@@ -50,7 +50,7 @@
       nodoColor: 'bg-cyan-500 ring-cyan-500/30'
     },
     MOVILIZACION_CSTI: {
-      titulo: 'Guía de Movilización CSTI SENASA',
+      titulo: 'Movilización CSTI declarada',
       icono: '🚛',
       badgeClases: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
       nodoColor: 'bg-amber-500 ring-amber-500/30'
@@ -93,7 +93,7 @@
     <div class="flex items-center gap-2">
       <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
       <h3 class="text-base font-bold text-white tracking-tight">
-        Cadena Inmutable de Eventos ({eventos.length} bloques encadenados)
+        Eventos registrados ({eventos.length})
       </h3>
     </div>
     <span class="text-xs font-mono text-slate-400">
