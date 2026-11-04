@@ -68,10 +68,11 @@ Transferencia interna: el implementador de tiempo real edita `apps/web/src/lib/a
 - [x] Añadir guardia de destino antes de cualquier conexión y probar rechazo de DB no permitida.
 - [x] Crear suite real con trazas de red apagadas y datos ficticios; añadir job CI aislado.
 - [x] Reproducir y publicar hallazgos de revisión en los PR correspondientes; no corregir archivos de Nicolás.
-- [ ] Ejecutar checks locales, publicar rama/PR dependiente en borrador y observar CI hasta su resultado. Registrar bloqueos que permanezcan.
+- [x] Ejecutar checks locales, publicar rama/PR dependiente en borrador y observar CI hasta su resultado. Registrar bloqueos que permanezcan.
 
 ## Estado y decisiones
 
 - Revisión N01–N05 y A1/A2/A4/N06 realizada en lectura. Hallazgos de logs WS, ubicación Spot, redacción, seed, reloj y cursor requieren corrección por Nicolás.
 - #29 es el único PR autorizado para fusionar: revisión y CI verificadas; ya está en `main`. Los PR de código siguen abiertos.
 - Rama de verificación combina commits originales de Nicolás con la entrega web anterior; no cambia sus archivos y no se promoverá mientras permanezcan bloqueantes.
+- Implementación `d38d304`, publicada en borrador [#37](https://github.com/Nicolas923-source/Ganadito/pull/37), base N05 `26e8179`. CI `41884285818` verde sobre `17a3af7`: 108 backend, 5 unitarios web, 36 configuración, 2 proxy, 56 navegador fixture, 2 HTTP y 1 recorrido real web/API/worker. La CI final se consulta en el PR. Los hallazgos de Nicolás y su revisión cruzada siguen pendientes; la tarea de integración no equivale a aceptación del producto.

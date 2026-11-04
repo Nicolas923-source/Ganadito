@@ -9,6 +9,7 @@ Este directorio prepara V06. No activa producción, no provisiona servicios ni e
 | `PUBLIC_API_URL` | Vacío: REST al mismo origen y proxy Svelte. | Vacío para proxy del servidor; si se define un origen público, debe estar autorizado y soportar las peticiones de sesión. Nunca contiene secretos. |
 | `API_INTERNAL_URL` | `http://127.0.0.1:4000`, solo servidor. | Origen privado/autorizado de la API; configurar en el host del servidor web. No exponer credenciales en variables `PUBLIC_*`. |
 | `PUBLIC_WS_URL` | Opcional: origen `ws://` o `wss://`; sin él se usa el origen web. El proxy Vite de desarrollo reenvía WS a `API_INTERNAL_URL`. | Origen `wss://` autorizado o reverse proxy que admita Upgrade de `/api/v1/subastas/:id/live`. El proxy REST de Svelte no sustituye el proxy WS. |
+| `PUBLIC_LIVE_AUCTIONS_ENABLED` | `false`: snapshots HTTP y pujas REST. | Conservar `false` hasta corregir la exposición del JWT en logs y revisar revocación del canal con Nicolás. |
 | `DATABASE_URL` o `DATABASE_*` | Solo API/servicios locales con datos ficticios. | Secretos del host de API, base de staging aislada confirmada por Nicolás. No reutilizar por coincidencia un proyecto Neon existente. |
 | `REDIS_URL` o `REDIS_*` | Solo API/workers locales. | Redis de staging; PostgreSQL conserva la autoridad de estado. |
 | `JWT_SECRET` | Valor ficticio de desarrollo. | Secreto propio del entorno administrado fuera de Git; N01 debe rechazar configuración insegura. |
@@ -85,7 +86,7 @@ Usar datos ficticios acordados con Nicolás y dos organizaciones. Adjuntar evide
 - Nicolás ejecuta el cierre con el mecanismo y permisos acordados. Consultar la orden por el contrato de lectura aprobado y verificar vínculo al lote y `PENDIENTE_PAGO`. La web no debe fabricar una orden cuando la ruta de lectura no exista.
 - Consultar mapa, Spot y pasaporte: resultados válidos, ausencia y error; organización ajena y campos privados conforme al contrato. No enviar eventos simulados a servicios externos.
 
-La suite e2e con fixtures no sustituye este recorrido. Mientras no se aporte esta evidencia y la revisión final de Nicolás, V06 permanece **preparado para validación integrada**, no cerrado al 100%.
+La suite con fixtures no sustituye este recorrido. La [CI 41884285818](https://github.com/Nicolas923-source/Ganadito/actions/runs/41884285818) ya acredita acceso, publicación, puja, cierre y orden en servicios efímeros del SHA `17a3af7`. No acredita staging, concurrencia no cubierta, privacidad resuelta ni transporte WS de producción. Mientras falten las correcciones bloqueantes y la revisión final de Nicolás, V06 no queda aceptado al 100%.
 
 ## Recuperación sin pérdida de datos
 
@@ -109,3 +110,5 @@ La suite e2e con fixtures no sustituye este recorrido. Mientras no se aporte est
 9. `0009_integraciones_tributarias_financieras.sql`
 
 Este inventario es de archivos versionados, no un registro de ejecución. Nicolás mantiene migraciones y seeds, identifica versiones aplicadas y coordina cualquier cambio en staging.
+
+La integración N01–N05 añade `0010_contexto_activo_unico.sql` y `0011_pujas_organizacion_postora.sql`, incluidas sin modificaciones desde la rama de Nicolás. La CI real usa el arranque versionado sobre DB efímera; confirmar por separado el historial aplicado en staging.

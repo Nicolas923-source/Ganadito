@@ -17,10 +17,12 @@ Contrato #29 integrado en `2ffe7d4`; baseline original de Nicolás `26e8179` (N0
 | `npm run test:e2e:http` | 2/2 correctas: modo HTTP predeterminado sin WebSocket/token en URL, snapshot y puja REST. |
 | Regresiones rojo → verde | HTTP 200 inesperado no confirma registro/publicación/puja; 409 `IDEMPOTENCY_IN_PROGRESS` conserva la clave. Error 403 de paginación retira datos; cambio de contexto/ruta descarta respuestas anteriores. |
 | Configuración del recorrido real | Un test detectado con `--list`; TypeScript focal correcto. Guardia rechaza antes del import backend. Su ejecución real se reserva al job efímero de CI. |
-| API/DB/worker reales | Por comprobar en la CI de esta rama. No se ejecutaron pruebas backend contra el PostgreSQL local existente ni Neon. |
+| API/DB/worker reales | Correctos en [CI 41884285818](https://github.com/Nicolas923-source/Ganadito/actions/runs/41884285818), SHA `17a3af775eded73dcca315d66722a4bed0d3ba59`: los tres jobs verdes. Monorepo incluye 108/108 pruebas backend con PostGIS/Redis; navegador real 1/1 correcto (47,9 s), fixtures 56/56 y HTTP 2/2. No se ejecutaron pruebas backend contra el PostgreSQL local existente ni Neon. |
 | Revisión cruzada y staging | Pendientes; la revisión técnica del asistente detectó/corrigió el caso de idempotencia, pero no sustituye la revisión final de Nicolás. |
 
 La nueva suite real cubre registro VENDEDOR y publicación web, acceso COMPRADOR, puja del navegador, reintento persistido, cierre automático, orden autorizada y rechazo 404 ajeno. Usa datos ficticios y pagos apagados. No se conservan trazas, vídeos ni capturas del recorrido real. El WS operativo permanece deshabilitado por el hallazgo de logs de N04; el pasaporte público sigue inactivo por los pendientes N05.
+
+Versiones del recorrido: web/API/worker del mismo SHA `17a3af7`, backend original N05 `26e8179`, contrato `2ffe7d4`. El job real arranca N01 con `RUN_MIGRATIONS_ON_START=true` sobre un servicio PostGIS recién creado y las migraciones versionadas `0001`–`0011`; no es un registro de migraciones de staging. La evidencia posterior del HEAD final, incluida la consolidación de concurrencia de CI, se enlaza en el PR [#37](https://github.com/Nicolas923-source/Ganadito/pull/37).
 
 ## Evidencia de la entrega inicial #35/#36
 
