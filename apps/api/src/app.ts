@@ -10,6 +10,7 @@ import { spotRoutes } from './spot/spot.routes.js';
 import { subastasRoutes } from './subastas/subastas.routes.js';
 import { subastasWsRoutes, SubastaWsHub } from './subastas/subastas.ws.js';
 import { pagosRoutes } from './pagos/pagos.routes.js';
+import type { PagosConfig } from './pagos/pagos.service.js';
 import { ordenesRoutes } from './subastas/ordenes.routes.js';
 import { trazabilidadRoutes } from './trazabilidad/trazabilidad.routes.js';
 import { mayoristaRoutes } from './mayorista/mayorista.routes.js';
@@ -32,6 +33,8 @@ export interface AppOptions {
   aiServiceUrl?: string;
   sunatAdapter?: SunatAdapter;
   cavaliAdapter?: CavaliAdapter;
+  /** Overrides de configuración de pagos (por defecto se leen de PAYMENTS_* / WEBHOOK_SECRET). */
+  pagos?: Partial<PagosConfig>;
 }
 
 export function buildApp(options: AppOptions = {}): FastifyInstance {
@@ -111,7 +114,8 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
   // Registrar módulo financiero de pagos y webhooks de pasarelas
   app.register(pagosRoutes, {
     prefix: '/api/v1/pagos',
-    pool
+    pool,
+    config: options.pagos
   });
 
   // Registrar ciclo de entrega y liquidaciones de órdenes de compra
