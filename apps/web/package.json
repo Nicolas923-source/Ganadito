@@ -7,11 +7,8 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "preview": "vite preview --host 127.0.0.1",
-    "start": "node build/index.js",
-    "test": "node --test src/lib/auctions/*.test.mjs"
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "typecheck": "svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
     "@ganadito/contracts": "*",
@@ -31,8 +28,5 @@
     "svelte-check": "^4.7.7",
     "tailwindcss": "^4.3.3",
     "vite": "^8.3.5"
-  },
-  "imports": {
-    "#lib/*": "./src/lib/*"
   }
 }
