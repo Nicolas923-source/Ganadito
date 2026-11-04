@@ -259,7 +259,7 @@ describe('Procesador Transactional Outbox y Difusión WebSocket en Tiempo Real',
     const compradorToken = cLogin.json().access_token;
 
     // 3. Conectar cliente WebSocket al canal de la subasta (/api/v1/subastas/:id/live)
-    const wsUrl = `ws://${serverHost}:${serverPort}/api/v1/subastas/${loteId}/live`;
+    const wsUrl = `ws://${serverHost}:${serverPort}/api/v1/subastas/${loteId}/live?access_token=${encodeURIComponent(compradorToken)}`;
     const clientWs = new WebSocket(wsUrl);
 
     await new Promise<void>((resolve, reject) => {
@@ -267,7 +267,10 @@ describe('Procesador Transactional Outbox y Difusión WebSocket en Tiempo Real',
       clientWs.once('error', reject);
     });
 
-    // Validar que el hub reconozca al cliente conectado
+    // El servidor valida token y lote antes de suscribir: esperar el registro en el hub.
+    for (let i = 0; i < 100 && wsHub.getActiveSubscribersCount(loteId) === 0; i++) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
     assert.strictEqual(wsHub.getActiveSubscribersCount(loteId), 1, 'Debe haber 1 suscriptor activo en el canal');
 
     // Preparar promesa para recibir el mensaje en tiempo real por el WebSocket
@@ -309,10 +312,13 @@ describe('Procesador Transactional Outbox y Difusión WebSocket en Tiempo Real',
 
     // 6. El cliente WebSocket debe recibir la notificación reenviada desde Redis Pub/Sub
     const mensajeRecibido = await mensajeWsPromise;
+    // Formato único del contrato v1: { event_type, lote_id, data }
+    assert.strictEqual(mensajeRecibido.event_type, 'PUJA_ACEPTADA');
     assert.strictEqual(mensajeRecibido.lote_id, loteId);
-    assert.strictEqual(mensajeRecibido.monto, 2150);
-    assert.strictEqual(mensajeRecibido.secuencia, 1);
-    assert.strictEqual(mensajeRecibido.nuevo_precio_actual, 2150);
+    assert.strictEqual(mensajeRecibido.data.monto, 2150);
+    assert.strictEqual(mensajeRecibido.data.secuencia, 1);
+    assert.strictEqual(mensajeRecibido.data.nuevo_precio_actual, 2150);
+    assert.ok(!('idempotency_key' in mensajeRecibido.data));
 
     // 7. Desconectar cliente y comprobar la limpieza ordenada de recursos
     clientWs.close();

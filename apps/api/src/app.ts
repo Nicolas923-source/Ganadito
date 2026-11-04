@@ -125,7 +125,8 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
   app.register(subastasWsRoutes, {
     prefix: '/api/v1',
     subscriber: options.redisSubscriber,
-    hub: options.wsHub
+    hub: options.wsHub,
+    pool
   });
 
   // Registrar módulo financiero de pagos y webhooks de pasarelas
