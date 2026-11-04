@@ -3,6 +3,7 @@ import type pg from 'pg';
 import { SunatAdapter, SunatError } from './sunat.adapter.js';
 import { CavaliAdapter, CavaliError } from './cavali.adapter.js';
 import { createAuthMiddleware } from '../auth/auth.middleware.js';
+import { requireRole, requireActiveOrganization } from '../auth/authorize.js';
 import type {
   LiquidacionCompraInput,
   SolicitudFactoringInput
@@ -30,10 +31,10 @@ export const taxRoutes: FastifyPluginAsync<TaxRoutesOptions> = async (fastify, o
    */
   fastify.post<{ Body: LiquidacionCompraInput }>(
     '/tributario/liquidaciones-compra',
-    { preHandler: [authenticate] },
+    { preHandler: [authenticate, requireActiveOrganization] },
     async (request, reply) => {
       try {
-        const resultado = await sunatAdapter.emitirLiquidacionCompra(request.body ?? ({} as any));
+        const resultado = await sunatAdapter.emitirLiquidacionCompra(request.body ?? ({} as any), request.userSession!.activeOrganizationId!);
         return reply.status(201).send(resultado);
       } catch (err: any) {
         if (err instanceof SunatError) {
@@ -59,7 +60,7 @@ export const taxRoutes: FastifyPluginAsync<TaxRoutesOptions> = async (fastify, o
    */
   fastify.post(
     '/tributario/conciliar-pendientes',
-    { preHandler: [authenticate] },
+    { preHandler: [authenticate, requireRole('ADMIN')] },
     async (request, reply) => {
       try {
         const resultado = await sunatAdapter.conciliarComprobantesPendientes();
@@ -81,11 +82,11 @@ export const taxRoutes: FastifyPluginAsync<TaxRoutesOptions> = async (fastify, o
    */
   fastify.get<{ Querystring: { limit?: number } }>(
     '/tributario/comprobantes',
-    { preHandler: [authenticate] },
+    { preHandler: [authenticate, requireActiveOrganization] },
     async (request, reply) => {
       try {
         const limit = request.query.limit ? Number(request.query.limit) : 50;
-        const comprobantes = await sunatAdapter.listarComprobantes(limit);
+        const comprobantes = await sunatAdapter.listarComprobantes(request.userSession!.activeOrganizationId!, limit);
         return reply.status(200).send({ comprobantes });
       } catch (err: any) {
         request.log.error(err);
@@ -104,10 +105,10 @@ export const taxRoutes: FastifyPluginAsync<TaxRoutesOptions> = async (fastify, o
    */
   fastify.get<{ Params: { id: string } }>(
     '/tributario/comprobantes/:id',
-    { preHandler: [authenticate] },
+    { preHandler: [authenticate, requireActiveOrganization] },
     async (request, reply) => {
       try {
-        const comprobante = await sunatAdapter.obtenerComprobantePorId(request.params.id);
+        const comprobante = await sunatAdapter.obtenerComprobantePorId(request.params.id, request.userSession!.activeOrganizationId!);
         return reply.status(200).send(comprobante);
       } catch (err: any) {
         if (err instanceof SunatError) {
@@ -133,7 +134,7 @@ export const taxRoutes: FastifyPluginAsync<TaxRoutesOptions> = async (fastify, o
    */
   fastify.post<{ Body: SolicitudFactoringInput }>(
     '/fintech/cavali/solicitar-factoring',
-    { preHandler: [authenticate] },
+    { preHandler: [authenticate, requireActiveOrganization] },
     async (request, reply) => {
       const session = request.userSession;
       try {
@@ -166,11 +167,11 @@ export const taxRoutes: FastifyPluginAsync<TaxRoutesOptions> = async (fastify, o
    */
   fastify.get<{ Querystring: { limit?: number } }>(
     '/fintech/cavali',
-    { preHandler: [authenticate] },
+    { preHandler: [authenticate, requireActiveOrganization] },
     async (request, reply) => {
       try {
         const limit = request.query.limit ? Number(request.query.limit) : 50;
-        const factorings = await cavaliAdapter.listarFactorings(limit);
+        const factorings = await cavaliAdapter.listarFactorings(request.userSession!.activeOrganizationId!, limit);
         return reply.status(200).send({ factorings });
       } catch (err: any) {
         request.log.error(err);
@@ -189,10 +190,10 @@ export const taxRoutes: FastifyPluginAsync<TaxRoutesOptions> = async (fastify, o
    */
   fastify.get<{ Params: { id: string } }>(
     '/fintech/cavali/:id',
-    { preHandler: [authenticate] },
+    { preHandler: [authenticate, requireActiveOrganization] },
     async (request, reply) => {
       try {
-        const factoring = await cavaliAdapter.obtenerFactoringPorId(request.params.id);
+        const factoring = await cavaliAdapter.obtenerFactoringPorId(request.params.id, request.userSession!.activeOrganizationId!);
         return reply.status(200).send(factoring);
       } catch (err: any) {
         if (err instanceof CavaliError) {

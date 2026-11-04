@@ -2,6 +2,7 @@ import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { getPool, closePool, runInitialMigration } from './db.js';
 import { buildApp } from './app.js';
+import { crearUsuarioConRol } from './test-helpers.js';
 import { AuthService } from './auth/auth.service.js';
 import { SubastasCloserService } from './subastas/subastas-closer.service.js';
 import { SubastasCloserWorker } from './subastas/subastas-closer.worker.js';
@@ -340,11 +341,20 @@ describe('Liquidación de Subastas y Órdenes de Compra Comercial (SubastasClose
     });
     assert.strictEqual(noAuthRes.statusCode, 401);
 
-    // 5.2 Invocación autorizada exitosa
-    const authRes = await app.inject({
+    // 5.2 Un rol no administrativo recibe 403
+    const vendRes = await app.inject({
       method: 'POST',
       url: '/api/v1/subastas/cerrar-expiradas',
       headers: { authorization: `Bearer ${vendedorToken}` }
+    });
+    assert.strictEqual(vendRes.statusCode, 403);
+
+    // 5.3 Invocación autorizada con rol ADMIN
+    const admin = await crearUsuarioConRol(app, authService, 'ADMIN', 'closer');
+    const authRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/subastas/cerrar-expiradas',
+      headers: { authorization: `Bearer ${admin.token}` }
     });
     assert.strictEqual(authRes.statusCode, 200);
     const body = authRes.json();
