@@ -10,6 +10,24 @@ import {
   calcularHashEvento
 } from '@ganadito/contracts';
 
+const CLAVE_SENSIBLE = /(lat|lon|lng|coord|gps|ubicacion|direccion|geo|dni|ruc|telefono|celular|email|correo|placa)/i;
+
+/** Redacta (recursivamente) las claves de metadata que revelan ubicación o datos personales. */
+export function redactarMetadata(valor: unknown): Record<string, unknown> {
+  const redactar = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(redactar);
+    if (v && typeof v === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+        out[k] = CLAVE_SENSIBLE.test(k) ? '[REDACTADO]' : redactar(val);
+      }
+      return out;
+    }
+    return v;
+  };
+  return (redactar(valor ?? {}) as Record<string, unknown>) ?? {};
+}
+
 const EVENTOS_CAMAL = new Set(['PESAJE_CAMAL', 'INSPECCION_POST_MORTEM']);
 
 export class TrazabilidadError extends Error {
@@ -258,7 +276,7 @@ export class TrazabilidadService {
   /**
    * Consulta el pasaporte digital completo: datos del bovino y eventos ordenados por secuencia.
    */
-  async obtenerPasaporte(bovinoId: string): Promise<PasaporteDigitalResponse> {
+  async obtenerPasaporte(bovinoId: string, viewerOrgId?: string): Promise<PasaporteDigitalResponse & { vista: 'COMPLETA' | 'PUBLICA' }> {
     const bovinoRes = await this.pool.query<Bovino>(
       `SELECT * FROM bovinos WHERE id = $1`,
       [bovinoId]
@@ -275,9 +293,16 @@ export class TrazabilidadService {
       [bovinoId]
     );
 
+    // Vista pública (QR): sin autor de cada evento y con la metadata sensible redactada
+    // (ubicación, documentos, contacto). Los hashes se conservan: la integridad se verifica
+    // con GET /bovinos/:id/verificar, que recalcula en el servidor.
+    if (viewerOrgId && viewerOrgId === bovino.organizacion_id) {
+      return { bovino, eventos: eventosRes.rows, vista: 'COMPLETA' };
+    }
     return {
       bovino,
-      eventos: eventosRes.rows
+      eventos: eventosRes.rows.map((e) => ({ ...e, autor_id: null as unknown as string, metadata: redactarMetadata(e.metadata) })),
+      vista: 'PUBLICA'
     };
   }
 
