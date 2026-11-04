@@ -73,10 +73,13 @@ export class SubastasCloserService {
           precio_base: string | number;
           precio_actual: string | number;
           postor_ganador_id: string | null;
+          organizacion_ganadora_id: string | null;
+          creado_por_user_id: string | null;
           fecha_cierre: string;
           version: number;
         }>(
-          `SELECT id, codigo_lote, vendedor_id, estado, precio_base, precio_actual, postor_ganador_id, fecha_cierre, version
+          `SELECT id, codigo_lote, vendedor_id, estado, precio_base, precio_actual, postor_ganador_id,
+                  organizacion_ganadora_id, creado_por_user_id, fecha_cierre, version
            FROM lotes_subasta
            WHERE id = $1 AND estado = 'ACTIVO' AND fecha_cierre <= CURRENT_TIMESTAMP
            FOR UPDATE SKIP LOCKED`,
@@ -149,7 +152,10 @@ export class SubastasCloserService {
            LIMIT 1`,
           [lote.postor_ganador_id]
         );
-        const orgCompradoraId = buyerOrgRes.rows[0]?.organizacion_id ?? null;
+        // La organización compradora es la que estaba activa al pujar (organizacion_ganadora_id).
+        // El contexto activo actual solo se usa para lotes anteriores a la migración 0011.
+        const orgCompradoraId =
+          lote.organizacion_ganadora_id ?? buyerOrgRes.rows[0]?.organizacion_id ?? null;
 
         // Obtener usuario representante de la organización vendedora
         const sellerUserRes = await client.query<{ user_id: string }>(
@@ -160,7 +166,7 @@ export class SubastasCloserService {
            LIMIT 1`,
           [lote.vendedor_id]
         );
-        const vendedorUserId = sellerUserRes.rows[0]?.user_id ?? null;
+        const vendedorUserId = lote.creado_por_user_id ?? sellerUserRes.rows[0]?.user_id ?? null;
 
         // c) Insertar fila en 'ordenes_compra'
         const ordenRes = await client.query<{ id: string }>(

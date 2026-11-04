@@ -1,12 +1,17 @@
 import type { FastifyPluginAsync } from 'fastify';
 import type WebSocket from 'ws';
 import type { Redis } from 'ioredis';
+import type pg from 'pg';
+import type { JwtUserPayload } from '../auth/types.js';
 import { getRedisSubscriber } from '../redis.js';
 
 export interface SubastasWsRoutesOptions {
   subscriber?: Redis;
   hub?: SubastaWsHub;
+  pool: pg.Pool;
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Hub centralizado de suscripción Redis Pub/Sub para WebSockets de Subastas en Vivo.
@@ -165,18 +170,39 @@ export const subastasWsRoutes: FastifyPluginAsync<SubastasWsRoutesOptions> = asy
    * GET /api/v1/subastas/:id/live
    * Endpoint WebSocket para transmisión en tiempo real de eventos de subasta (pujas aceptadas, cierre).
    */
-  fastify.get<{ Params: { id: string } }>(
+  fastify.get<{ Params: { id: string }; Querystring: { access_token?: string } }>(
     '/subastas/:id/live',
     { websocket: true },
     async (socket, request) => {
-      const { id } = request.params;
+      const id = request.params.id?.trim();
 
-      if (!id || !id.trim()) {
+      if (!id || !UUID_RE.test(id)) {
         socket.close(1008, 'ID de subasta inválido.');
         return;
       }
 
-      await getHub().addClient(id.trim(), socket);
+      // Los navegadores no pueden enviar cabeceras en el upgrade: se acepta ?access_token=
+      // (token de 15 min) o Authorization: Bearer para clientes no navegador.
+      const header = request.headers.authorization;
+      const token =
+        request.query.access_token ??
+        (header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : undefined);
+
+      try {
+        const decoded = token ? fastify.jwt.verify<JwtUserPayload>(token) : null;
+        if (!decoded?.user_id) throw new Error('sin sesión');
+      } catch {
+        socket.close(1008, 'Sesión requerida.');
+        return;
+      }
+
+      const lote = await options.pool.query('SELECT 1 FROM lotes_subasta WHERE id = $1', [id]);
+      if (lote.rowCount === 0) {
+        socket.close(1008, 'Lote de subasta no encontrado.');
+        return;
+      }
+
+      await getHub().addClient(id, socket);
     }
   );
 };
