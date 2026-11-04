@@ -35,14 +35,15 @@ export const subastasRoutes: FastifyPluginAsync<SubastasRoutesOptions> = async (
       }
 
       try {
-        const lote = await subastasService.crearLote(activeOrgId, request.body);
+        const lote = await subastasService.crearLote(activeOrgId, request.body, request.userSession!.userId);
         return reply.status(201).send(lote);
       } catch (err: any) {
         if (err instanceof SubastaError) {
           return reply.status(err.statusCode).send({
             statusCode: err.statusCode,
             error: err.name,
-            message: err.message
+            message: err.message,
+            ...(err.code ? { code: err.code } : {})
           });
         }
         request.log.error(err);
@@ -72,7 +73,8 @@ export const subastasRoutes: FastifyPluginAsync<SubastasRoutesOptions> = async (
           return reply.status(err.statusCode).send({
             statusCode: err.statusCode,
             error: err.name,
-            message: err.message
+            message: err.message,
+            ...(err.code ? { code: err.code } : {})
           });
         }
         request.log.error(err);
@@ -127,7 +129,8 @@ export const subastasRoutes: FastifyPluginAsync<SubastasRoutesOptions> = async (
           return reply.status(err.statusCode).send({
             statusCode: err.statusCode,
             error: err.name,
-            message: err.message
+            message: err.message,
+            ...(err.code ? { code: err.code } : {})
           });
         }
         request.log.error(err);
