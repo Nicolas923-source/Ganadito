@@ -419,4 +419,86 @@ describe('Motor Transaccional de Subastas en Vivo (PostgreSQL, Concurrencia y An
     );
     assert.strictEqual(countRes.rows[0]!.count, '1');
   });
+
+  test('8. Reloj tras el bloqueo: una puja enviada antes del cierre que espera FOR UPDATE y se libera después es rechazada', async () => {
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/subastas',
+      headers: { authorization: `Bearer ${vendedorToken}` },
+      payload: {
+        codigo_lote: `LOTE-RELOJ-${Date.now()}`,
+        precio_base: 5000,
+        incremento_minimo: 100,
+        fecha_cierre: new Date(Date.now() + 2500).toISOString(),
+        anti_sniping_seconds: 0,
+        anti_sniping_extension: 0,
+        estado: 'ACTIVO'
+      }
+    });
+    assert.strictEqual(createRes.statusCode, 201, createRes.body);
+    const loteId = createRes.json().id;
+
+    // Otra conexión retiene el bloqueo de la fila hasta después del cierre.
+    const bloqueo = await pool.connect();
+    try {
+      await bloqueo.query('BEGIN');
+      await bloqueo.query('SELECT id FROM lotes_subasta WHERE id = $1 FOR UPDATE', [loteId]);
+
+      // La puja empieza antes del cierre y queda esperando el bloqueo.
+      const pujaPendiente = app.inject({
+        method: 'POST',
+        url: `/api/v1/subastas/${loteId}/pujas`,
+        headers: { authorization: `Bearer ${comprador1Token}`, 'idempotency-key': `reloj-${Date.now()}` },
+        payload: { monto: 5100 }
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 4000));
+      await bloqueo.query('COMMIT');
+
+      const res = await pujaPendiente;
+      assert.strictEqual(res.statusCode, 400, `Se esperaba rechazo tras el cierre: ${res.body}`);
+      assert.strictEqual(res.json().code, 'LOTE_NO_ABIERTO');
+    } finally {
+      await bloqueo.query('ROLLBACK').catch(() => {});
+      bloqueo.release();
+    }
+
+    const countRes = await pool.query<{ count: string }>(
+      'SELECT COUNT(*)::text AS count FROM subasta_pujas WHERE lote_id = $1',
+      [loteId]
+    );
+    assert.strictEqual(countRes.rows[0]!.count, '0');
+  });
+
+  test('9. Lote ACTIVO con inicio futuro: el snapshot no lo muestra abierto y la puja se rechaza', async () => {
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/subastas',
+      headers: { authorization: `Bearer ${vendedorToken}` },
+      payload: {
+        codigo_lote: `LOTE-FUTURO-${Date.now()}`,
+        precio_base: 5000,
+        incremento_minimo: 100,
+        fecha_inicio: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        fecha_cierre: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+        estado: 'ACTIVO'
+      }
+    });
+    assert.strictEqual(createRes.statusCode, 201, createRes.body);
+    const loteId = createRes.json().id;
+
+    const snap = await app.inject({ method: 'GET', url: `/api/v1/subastas/${loteId}/snapshot` });
+    assert.strictEqual(snap.statusCode, 200);
+    assert.strictEqual(snap.json().es_abierta, false);
+    assert.strictEqual('iniciado' in snap.json(), false, 'El campo interno no debe filtrarse');
+
+    const puja = await app.inject({
+      method: 'POST',
+      url: `/api/v1/subastas/${loteId}/pujas`,
+      headers: { authorization: `Bearer ${comprador1Token}`, 'idempotency-key': `futuro-${Date.now()}` },
+      payload: { monto: 5100 }
+    });
+    assert.strictEqual(puja.statusCode, 400);
+    assert.strictEqual(puja.json().code, 'LOTE_NO_ABIERTO');
+  });
 });

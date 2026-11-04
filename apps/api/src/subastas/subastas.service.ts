@@ -162,6 +162,8 @@ export class SubastasService {
       fecha_cierre: string;
       secuencia_maxima: number;
       version: number;
+      iniciado: boolean;
+      antes_del_cierre: boolean;
     }>(
       `SELECT
          l.id,
@@ -174,6 +176,8 @@ export class SubastasService {
          l.postor_ganador_id,
          u.nombre AS postor_ganador_nombre,
          GREATEST(0, ROUND(EXTRACT(EPOCH FROM (l.fecha_cierre - NOW()))))::int AS tiempo_restante_segundos,
+         (l.fecha_inicio <= NOW()) AS iniciado,
+         (l.fecha_cierre > NOW()) AS antes_del_cierre,
          l.fecha_cierre,
          COALESCE(MAX(p.secuencia), 0)::int AS secuencia_maxima,
          l.version
@@ -189,8 +193,9 @@ export class SubastasService {
       throw new SubastaError('Lote de subasta no encontrado.', 404);
     }
 
-    const row = res.rows[0]!;
-    const esAbierta = row.estado === 'ACTIVO' && row.tiempo_restante_segundos > 0;
+    const { iniciado, antes_del_cierre, ...row } = res.rows[0]!;
+    // Misma regla que la escritura: ACTIVO, ya iniciado y antes del cierre oficial.
+    const esAbierta = row.estado === 'ACTIVO' && iniciado && antes_del_cierre;
 
     return {
       ...row,
@@ -277,16 +282,13 @@ export class SubastasService {
         return record.response_body;
       }
 
-      // 2. Bloqueo pesimista del lote. Todos los tiempos se evalúan con el reloj de PostgreSQL.
+      // 2. Bloqueo pesimista del lote.
       const loteRes = await client.query<{
         id: string;
         vendedor_id: string;
         estado: string;
         precio_actual_centimos: string;
         incremento_minimo_centimos: string;
-        no_iniciado: boolean;
-        segundos_restantes: number;
-        fecha_cierre: Date;
         anti_sniping_seconds: number;
         anti_sniping_extension: number;
       }>(
@@ -296,9 +298,6 @@ export class SubastasService {
            estado,
            ROUND(precio_actual * 100)::bigint AS precio_actual_centimos,
            ROUND(incremento_minimo * 100)::bigint AS incremento_minimo_centimos,
-           fecha_inicio > NOW() AS no_iniciado,
-           EXTRACT(EPOCH FROM (fecha_cierre - NOW()))::float AS segundos_restantes,
-           fecha_cierre,
            anti_sniping_seconds,
            anti_sniping_extension
          FROM lotes_subasta
@@ -311,7 +310,25 @@ export class SubastasService {
         throw new SubastaError('Lote de subasta no encontrado.', 404);
       }
 
-      const lote = loteRes.rows[0]!;
+      // 2b. Reloj real de PostgreSQL leído DESPUÉS de obtener el bloqueo. NOW() conserva el
+      //     inicio de la transacción: una puja que esperó el FOR UPDATE se evaluaría con la hora
+      //     anterior y podría aceptarse tras el cierre. clock_timestamp() es la hora actual, y
+      //     la sentencia separada garantiza que se evalúa ya con la fila bloqueada.
+      const relojRes = await client.query<{
+        no_iniciado: boolean;
+        segundos_restantes: number;
+        fecha_cierre: Date;
+      }>(
+        `SELECT
+           fecha_inicio > clock_timestamp() AS no_iniciado,
+           EXTRACT(EPOCH FROM (fecha_cierre - clock_timestamp()))::float AS segundos_restantes,
+           fecha_cierre
+         FROM lotes_subasta
+         WHERE id = $1`,
+        [loteId]
+      );
+
+      const lote = { ...loteRes.rows[0]!, ...relojRes.rows[0]! };
 
       if (lote.estado !== 'ACTIVO') {
         throw new SubastaError(
