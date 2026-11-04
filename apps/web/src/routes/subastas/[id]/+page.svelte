@@ -52,6 +52,8 @@
     async function querySnapshot(): Promise<boolean> {
       if (disposed || !id) return false;
       const number = ++requestNumber;
+      const querySocket = socket;
+      const startedWithOpenSocket = querySocket?.readyState === WebSocket.OPEN;
       request = new AbortController();
       try {
         const result = await apiRequest<unknown>(`/api/v1/subastas/${encodeURIComponent(id)}/snapshot`, { signal: request.signal });
@@ -63,7 +65,9 @@
         seconds = remainingAtSync;
         lastUpdated = new Date().toLocaleTimeString('es-PE');
         error = '';
-        connection = socket?.readyState === WebSocket.OPEN ? 'CONECTADO' : 'DESCONECTADO';
+        const recovered = startedWithOpenSocket && querySocket === socket && socket?.readyState === WebSocket.OPEN;
+        connection = recovered ? 'CONECTADO' : socket?.readyState === WebSocket.OPEN ? 'SINCRONIZANDO' : 'DESCONECTADO';
+        if (recovered) { attempts = 0; retries = 0; }
         return true;
       } catch (cause) {
         if (disposed || number !== requestNumber) return false;
@@ -97,17 +101,16 @@
       if (disposed) return;
       connection = attempts ? 'RECONECTANDO' : 'SINCRONIZANDO';
       try {
-        socket = new WebSocket(apiWebSocketUrl(`/api/v1/subastas/${encodeURIComponent(id)}/live`));
-        socket.onopen = async () => {
+        const transport = new WebSocket(apiWebSocketUrl(`/api/v1/subastas/${encodeURIComponent(id)}/live`));
+        socket = transport;
+        transport.onopen = () => {
+          if (disposed || socket !== transport) return;
           // Recover official state on every connection, including the first one.
-          const ok = await synchronize();
-          if (!disposed && socket?.readyState === WebSocket.OPEN) {
-            connection = ok ? 'CONECTADO' : 'DESCONECTADO';
-            if (ok) { attempts = 0; retries = 0; }
-          }
+          connection = 'SINCRONIZANDO';
+          void synchronize();
         };
-        socket.onmessage = (message) => {
-          if (disposed || contextKey !== key) return;
+        transport.onmessage = (message) => {
+          if (disposed || socket !== transport || contextKey !== key) return;
           try {
             const event = parseAuctionEvent(JSON.parse(String(message.data)), id);
             if (!event) return;
@@ -120,9 +123,13 @@
             void synchronize();
           } catch { void synchronize(); }
         };
-        socket.onerror = () => socket?.close();
-        socket.onclose = () => {
-          if (disposed) return;
+        transport.onerror = () => {
+          if (disposed || socket !== transport) return;
+          connection = 'DESCONECTADO';
+          transport.close();
+        };
+        transport.onclose = () => {
+          if (disposed || socket !== transport) return;
           connection = 'RECONECTANDO';
           attempts += 1;
           retries = attempts;
@@ -193,7 +200,9 @@
         {/if}
       </section>
       {#key contextKey}
-        <PanelPujaRapida subastaId={lotId} precioActual={snapshot.precio_actual} incrementoMinimo={snapshot.incremento_minimo} proximaPujaMinima={snapshot.proxima_puja_minima} esAbierta={snapshot.es_abierta && !error && !loading} onPujaExitosa={accepted} />
+        <fieldset class="min-w-0" disabled={connection !== 'CONECTADO'} aria-label="Acciones de puja">
+          <PanelPujaRapida subastaId={lotId} precioActual={snapshot.precio_actual} incrementoMinimo={snapshot.incremento_minimo} proximaPujaMinima={snapshot.proxima_puja_minima} esAbierta={snapshot.es_abierta && connection === 'CONECTADO' && !error && !loading} onPujaExitosa={accepted} />
+        </fieldset>
       {/key}
     </div>
     <section class="rounded-2xl border border-slate-700 bg-slate-900 p-5 space-y-3">

@@ -162,3 +162,64 @@ test('polling lets a slow official query finish instead of cancelling it every t
   release!();
   await expect(page.getByRole('heading', { name: 'LOTE-PRUEBA-101' })).toBeVisible();
 });
+
+test('bids remain disabled after disconnect until the reconnected socket receives a fresh official snapshot', async ({ page }) => {
+  await installSession(page);
+  const sockets: WebSocketRoute[] = [];
+  let holdRecovery = false;
+  let releaseRecovery: (() => void) | undefined;
+  await page.route(`**/api/v1/subastas/${lotId}/snapshot`, async route => {
+    if (holdRecovery) await new Promise<void>(resolve => { releaseRecovery = resolve; });
+    await route.fulfill({ json: snapshot() });
+  });
+  await page.routeWebSocket(`**/api/v1/subastas/${lotId}/live`, socket => { sockets.push(socket); });
+  await page.goto(`/subastas/${lotId}`);
+  const bidButton = page.getByRole('button', { name: 'Confirmar puja' });
+  await expect(page.getByRole('button', { name: 'Cerrar sesión' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'En Vivo' })).toBeVisible();
+  await expect(bidButton).toBeEnabled();
+  await page.getByLabel('Importe de tu puja (S/)').fill('110');
+  holdRecovery = true;
+  const before = sockets.length;
+  try {
+    await sockets.at(-1)!.close({ code: 1012, reason: 'Reconexión con recuperación pendiente' });
+    await expect(bidButton).toBeDisabled();
+    await expect.poll(() => sockets.length, { timeout: 10000 }).toBeGreaterThan(before);
+    await expect.poll(() => !!releaseRecovery).toBeTruthy();
+    // The transport is open again, but its official recovery query is still pending.
+    await expect(bidButton).toBeDisabled();
+    holdRecovery = false;
+    releaseRecovery!();
+    await expect(page.getByRole('status').filter({ hasText: 'En Vivo' })).toBeVisible();
+    await expect(bidButton).toBeEnabled();
+  } finally {
+    holdRecovery = false;
+    releaseRecovery?.();
+  }
+});
+
+test('an uncertain bid cannot be retried while the reconnection snapshot is pending', async ({ page }) => {
+  await installSession(page);
+  await page.route(`**/api/v1/subastas/${lotId}/pujas`, route => route.abort('failed'));
+  const { sockets } = await room(page, () => snapshot());
+  await expect(page.getByRole('button', { name: 'Confirmar puja' })).toBeEnabled();
+  await page.getByLabel('Importe de tu puja (S/)').fill('110');
+  await page.getByRole('button', { name: 'Confirmar puja' }).click();
+  const retryButton = page.getByRole('button', { name: 'Reintentar la misma puja' });
+  await expect(retryButton).toBeEnabled();
+  let releaseRecovery: (() => void) | undefined;
+  await page.route(`**/api/v1/subastas/${lotId}/snapshot`, async route => {
+    await new Promise<void>(resolve => { releaseRecovery = resolve; });
+    await route.fulfill({ json: snapshot() });
+  });
+  const before = sockets.length;
+  try {
+    await sockets.at(-1)!.close({ code: 1012, reason: 'Reintento pendiente durante reconexión' });
+    await expect(retryButton).toBeDisabled();
+    await expect.poll(() => sockets.length, { timeout: 10000 }).toBeGreaterThan(before);
+    await expect.poll(() => !!releaseRecovery).toBeTruthy();
+    await expect(retryButton).toBeDisabled();
+    releaseRecovery!();
+    await expect(retryButton).toBeEnabled();
+  } finally { releaseRecovery?.(); }
+});
