@@ -2,6 +2,14 @@
 
 Base: `Nicolas923-source/Ganadito`, commit `dde293bc977ac090d631b6c90a2cb4bb6efcb40e`. Validación inicial del 3 de noviembre de 2026 y repetición completa el 4 de noviembre de 2026 (America/Bogota).
 
+## Ejecución programada: mismo lote publicado desde la web
+
+La prueba real se amplió tras leer la foto y el PDF originales: el lote creado por el formulario web es ahora exactamente el mismo que se puja, cierra mediante worker y consulta como orden. Se retiró la segunda publicación API usada por la prueba histórica. Se añadió recuperación de sesión/snapshot tras recarga y rechazo opaco del detalle de la orden al ingresar desde la web con otra organización.
+
+No se cambiaron reglas de negocio ni contratos: se conserva el anti-sniping predeterminado, se programa desde el formulario un cierre a dos o tres minutos y se espera al worker. La suite dispone de 270 segundos para este caso. Validación local sin DB: TypeScript focal correcto, un caso detectado, 30 guardias y 5 unitarios web correctos. Evidencia de CI del código final en [#37](https://github.com/Nicolas923-source/Ganadito/pull/37); el estado histórico de los apartados siguientes no sustituye esa comprobación.
+
+La auditoría de propiedad, nuevas revisiones de Nicolás y límites están en [SEGUIMIENTO_FOTO_2026-11-04.md](SEGUIMIENTO_FOTO_2026-11-04.md). La revisión cruzada de Nicolás y los hallazgos de backend pendientes siguen siendo necesarios para aceptar la entrega.
+
 ## Seguimiento: instancia destruida y aprobación delegada
 
 El propietario autorizó posteriormente que Codex registre aprobaciones de cambios de Nicolás revisados y comprobados. #27 ya estaba aprobado personalmente; #25 y #28 se aprobaron por delegación en los mismos SHA con CI exacta verde. #31 continúa sin aprobar por sus dependencias y falta de CI individual. Los PR con defectos y los propios de Víctor permanecen sin aprobación automática ni fusión.
