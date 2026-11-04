@@ -1,4 +1,6 @@
 import bcryptjs from 'bcryptjs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { getPool, closePool, runInitialMigration } from '../db.js';
 import { calcularHashEvento, GENESIS_PREV_HASH } from '@ganadito/contracts';
 
@@ -10,54 +12,56 @@ import { calcularHashEvento, GENESIS_PREV_HASH } from '@ganadito/contracts';
  * Guardia de seguridad para impedir ejecuciones accidentales en entornos de producción
  * o sobre bases de datos no locales/tests.
  */
+const HOSTS_SEED_PERMITIDOS = new Set(['localhost', '127.0.0.1', '::1', 'ganadito-postgres', 'postgres']);
+
+/**
+ * Hosts permitidos: lista exacta local/docker/CI, más los indicados explícitamente en
+ * SEED_ALLOWED_HOSTS (separados por coma). No se usan coincidencias parciales del nombre
+ * (p. ej. "includes('test')" aceptaría "prod-test-db.example.com").
+ */
+export function esHostSeedPermitido(hostname: string): boolean {
+  const host = hostname.trim().toLowerCase().replace(/^\[|\]$/g, '');
+  if (!host) return false;
+  const extra = (process.env.SEED_ALLOWED_HOSTS ?? '')
+    .split(',')
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean);
+  return HOSTS_SEED_PERMITIDOS.has(host) || extra.includes(host);
+}
+
+/**
+ * Guardia de seguridad para impedir ejecuciones accidentales en producción
+ * o sobre bases de datos no locales.
+ */
 export function assertSafeSeedEnvironment(): void {
   if (process.env.NODE_ENV === 'production') {
-    console.error('⛔ [ERROR CRÍTICO] No se permite ejecutar seeders en entorno de producción (NODE_ENV === "production"). Abortando.');
+    console.error('⛔ [ERROR CRÍTICO] No se permite ejecutar seeders con NODE_ENV="production". Abortando.');
     process.exit(1);
   }
 
   const dbUrl = process.env.DATABASE_URL;
   if (dbUrl) {
-    let hostname = '';
+    let hostname: string | null = null;
     try {
-      const parsed = new URL(dbUrl);
-      hostname = parsed.hostname;
+      hostname = new URL(dbUrl).hostname;
     } catch {
-      hostname = dbUrl;
+      hostname = null;
     }
-
-    const isSafeUrl =
-      hostname === 'localhost' ||
-      hostname === '127.0.0.1' ||
-      hostname === 'ganadito-postgres' ||
-      hostname === 'postgres' ||
-      hostname.endsWith('.local') ||
-      hostname.includes('test');
-
-    if (!isSafeUrl) {
+    if (!hostname || !esHostSeedPermitido(hostname)) {
       console.error(
-        `⛔ [ERROR CRÍTICO] DATABASE_URL apunta a un host no permitido para seeders (${hostname}). Solo se admiten conexiones locales o de test/docker. Abortando.`
+        `⛔ [ERROR CRÍTICO] DATABASE_URL no apunta a un host local permitido (${hostname ?? 'URL inválida'}). Use SEED_ALLOWED_HOSTS para autorizar otro host explícitamente. Abortando.`
       );
       process.exit(1);
     }
+    return;
   }
 
-  const dbHost = process.env.DATABASE_HOST;
-  if (dbHost) {
-    const isSafeHost =
-      dbHost === 'localhost' ||
-      dbHost === '127.0.0.1' ||
-      dbHost === 'ganadito-postgres' ||
-      dbHost === 'postgres' ||
-      dbHost.endsWith('.local') ||
-      dbHost.includes('test');
-
-    if (!isSafeHost) {
-      console.error(
-        `⛔ [ERROR CRÍTICO] DATABASE_HOST (${dbHost}) no apunta a una base de datos local o de test/docker. Abortando.`
-      );
-      process.exit(1);
-    }
+  const dbHost = process.env.DATABASE_HOST ?? 'localhost';
+  if (!esHostSeedPermitido(dbHost)) {
+    console.error(
+      `⛔ [ERROR CRÍTICO] DATABASE_HOST (${dbHost}) no es un host local permitido. Use SEED_ALLOWED_HOSTS para autorizarlo explícitamente. Abortando.`
+    );
+    process.exit(1);
   }
 }
 
@@ -713,7 +717,13 @@ export async function runDatabaseSeed(): Promise<void> {
 }
 
 // Ejecutar si se invoca directamente desde CLI
-if (process.argv[1] && process.argv[1].endsWith('seed.ts')) {
+// Comparación exacta de rutas: `endsWith('seed.ts')` también disparaba la siembra al importar
+// cualquier archivo cuyo nombre terminara en "seed.ts" (y nunca con el seed.js compilado).
+const esEjecucionDirecta =
+  process.argv[1] !== undefined &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (esEjecucionDirecta) {
   runDatabaseSeed().catch(() => {
     process.exit(1);
   });
