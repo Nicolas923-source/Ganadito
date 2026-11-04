@@ -52,10 +52,11 @@ export class AuthService {
   }> {
     const rolInicial: RolOrganizacion = data.rol_inicial ?? 'COMPRADOR';
 
+    // allowInternalRoles sólo debe usarse desde código interno (seeders, tests, alta administrativa),
+    // nunca a partir de datos del cliente.
     const isWhitelisted = ROLES_AUTOREGISTRO_PERMITIDOS.includes(rolInicial);
-    const isLegacyTestHelper = Boolean(new Error().stack?.includes('logistica.test.ts'));
 
-    if (!isWhitelisted && !options?.allowInternalRoles && !isLegacyTestHelper) {
+    if (!isWhitelisted && options?.allowInternalRoles !== true) {
       throw new AuthError('Rol no permitido para autoregistro', 400);
     }
 
@@ -93,7 +94,6 @@ export class AuthService {
       const org = orgRes.rows[0]!;
 
       // 5. Asignar rol inicial como contexto activo
-      const rolInicial: RolOrganizacion = data.rol_inicial ?? 'COMPRADOR';
       await client.query(
         `INSERT INTO user_organizaciones_roles (user_id, organizacion_id, rol, is_active_context)
          VALUES ($1, $2, $3, TRUE)`,
