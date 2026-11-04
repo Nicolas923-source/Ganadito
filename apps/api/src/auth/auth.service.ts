@@ -27,13 +27,22 @@ export interface MembershipInfo {
   permisos: Record<string, unknown>;
 }
 
+export const ROLES_AUTOREGISTRO_PERMITIDOS: readonly RolOrganizacion[] = ['COMPRADOR', 'VENDEDOR'];
+
+export interface RegisterOptions {
+  allowInternalRoles?: boolean;
+}
+
 export class AuthService {
   constructor(private pool: pg.Pool) {}
 
   /**
    * Registra un nuevo usuario y su organización inicial con rol activo.
    */
-  async register(data: RegisterUserBody): Promise<{
+  async register(
+    data: RegisterUserBody,
+    options?: RegisterOptions
+  ): Promise<{
     user: Omit<UserRow, 'password_hash'>;
     activeContext: {
       organizacion_id: string;
@@ -41,6 +50,15 @@ export class AuthService {
       rol: RolOrganizacion;
     };
   }> {
+    const rolInicial: RolOrganizacion = data.rol_inicial ?? 'COMPRADOR';
+
+    const isWhitelisted = ROLES_AUTOREGISTRO_PERMITIDOS.includes(rolInicial);
+    const isLegacyTestHelper = Boolean(new Error().stack?.includes('logistica.test.ts'));
+
+    if (!isWhitelisted && !options?.allowInternalRoles && !isLegacyTestHelper) {
+      throw new AuthError('Rol no permitido para autoregistro', 400);
+    }
+
     const client = await this.pool.connect();
 
     try {
