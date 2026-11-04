@@ -36,7 +36,7 @@
     created = null;
     try {
       const result = await apiRequest<{ id: string; codigo_lote: string; estado: string }>('/api/v1/subastas', {
-        method: 'POST', body: JSON.stringify({ codigo_lote: code.trim() || undefined,
+        method: 'POST', expectedStatus: 201, body: JSON.stringify({ codigo_lote: code.trim() || undefined,
           precio_base: price, incremento_minimo: increment, fecha_cierre: new Date(closing).toISOString(), estado: 'ACTIVO' })
       });
       if (contextKey !== key) return;
@@ -49,7 +49,7 @@
       if (contextKey !== key) return;
       error = cause instanceof Error ? cause.message : 'No se pudo publicar el lote.';
       const status = cause && typeof cause === 'object' && 'status' in cause ? Number(cause.status) : 0;
-      if (status === 0 || status >= 500) uncertain = true;
+      if (!(status >= 400 && status < 500)) uncertain = true;
     } finally { submitting = false; }
   }
 </script>

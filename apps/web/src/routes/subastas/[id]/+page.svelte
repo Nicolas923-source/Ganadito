@@ -1,10 +1,9 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { apiRequest } from '#lib/api.ts';
-  import { apiWebSocketUrl } from '#lib/config.ts';
+  import { apiWebSocketUrl, liveAuctionsEnabled } from '#lib/config.ts';
   import { session } from '#lib/session.ts';
-  import { receivedOrder } from '#lib/auctions/orders.ts';
-  import { parseSnapshot, parseAuctionEvent, type AuctionSnapshot, type AcceptedBid } from '#lib/auctions/state.ts';
+  import { parseSnapshot, parseLiveEvent, type AuctionSnapshot, type AcceptedBid, type PublicBid } from '#lib/auctions/state.ts';
   import PanelPujaRapida from '#lib/components/subastas/PanelPujaRapida.svelte';
   import EstadoConexionWs, { type EstadoConexion } from '#lib/components/subastas/EstadoConexionWs.svelte';
 
@@ -17,13 +16,16 @@
   let retries = $state(0);
   let seconds = $state(0);
   let lastUpdated = $state('');
-  let bids = $state<AcceptedBid[]>([]);
+  let bids = $state<PublicBid[]>([]);
+  const synchronized = $derived(connection === 'CONECTADO' || connection === 'PERIODICO');
   let refresh: () => Promise<boolean> = async () => false;
 
   $effect(() => {
     const id = lotId;
     const key = contextKey;
     const checkingSession = $session.status === 'checking';
+    const token = $session.status === 'authenticated' ? $session.token : null;
+    const useLive = liveAuctionsEnabled && !!token;
     snapshot = null;
     bids = [];
     error = '';
@@ -31,9 +33,7 @@
     connection = 'SINCRONIZANDO';
     retries = 0;
     seconds = 0;
-    receivedOrder.update(value => value?.contextKey === key ? value : null);
     // Do not open a short-lived transport while the stored session is being restored.
-    // Anonymous visitors still connect normally after the session check resolves.
     if (checkingSession) {
       refresh = async () => false;
       return;
@@ -48,25 +48,28 @@
     let attempts = 0;
     let inFlight: Promise<boolean> | null = null;
     let refreshQueued = false;
+    let observedSequence = 0;
 
     async function querySnapshot(): Promise<boolean> {
       if (disposed || !id) return false;
       const number = ++requestNumber;
       const querySocket = socket;
       const startedWithOpenSocket = querySocket?.readyState === WebSocket.OPEN;
+      connection = 'SINCRONIZANDO';
       request = new AbortController();
       try {
         const result = await apiRequest<unknown>(`/api/v1/subastas/${encodeURIComponent(id)}/snapshot`, { signal: request.signal });
         if (disposed || number !== requestNumber) return false;
         const official = parseSnapshot(result, id);
         snapshot = official;
+        observedSequence = Math.max(observedSequence, official.secuencia_maxima);
         remainingAtSync = official.tiempo_restante_segundos;
         successfulAt = Date.now();
         seconds = remainingAtSync;
         lastUpdated = new Date().toLocaleTimeString('es-PE');
         error = '';
         const recovered = startedWithOpenSocket && querySocket === socket && socket?.readyState === WebSocket.OPEN;
-        connection = recovered ? 'CONECTADO' : socket?.readyState === WebSocket.OPEN ? 'SINCRONIZANDO' : 'DESCONECTADO';
+        connection = !useLive ? 'PERIODICO' : recovered ? 'CONECTADO' : socket?.readyState === WebSocket.OPEN ? 'SINCRONIZANDO' : 'DESCONECTADO';
         if (recovered) { attempts = 0; retries = 0; }
         return true;
       } catch (cause) {
@@ -98,10 +101,12 @@
     refresh = synchronize;
 
     function connect() {
-      if (disposed) return;
+      if (disposed || !useLive || !token) return;
       connection = attempts ? 'RECONECTANDO' : 'SINCRONIZANDO';
       try {
-        const transport = new WebSocket(apiWebSocketUrl(`/api/v1/subastas/${encodeURIComponent(id)}/live`));
+        const url = new URL(apiWebSocketUrl(`/api/v1/subastas/${encodeURIComponent(id)}/live`));
+        url.searchParams.set('access_token', token);
+        const transport = new WebSocket(url);
         socket = transport;
         transport.onopen = () => {
           if (disposed || socket !== transport) return;
@@ -112,12 +117,12 @@
         transport.onmessage = (message) => {
           if (disposed || socket !== transport || contextKey !== key) return;
           try {
-            const event = parseAuctionEvent(JSON.parse(String(message.data)), id);
+            const event = parseLiveEvent(JSON.parse(String(message.data)), id);
             if (!event) return;
-            if (event.kind === 'bid') recordBid(event.data);
-            if (event.kind === 'order' && $session.status === 'authenticated' &&
-              [event.data.organizacion_compradora_id, event.data.organizacion_vendedora_id].includes($session.organizationId ?? '')) {
-              receivedOrder.set({ event: event.data, contextKey: key, receivedAt: new Date().toISOString() });
+            if (event.kind === 'bid') {
+              if (event.data.secuencia <= Math.max(snapshot?.secuencia_maxima ?? 0, observedSequence)) return;
+              observedSequence = event.data.secuencia;
+              if (connection === 'CONECTADO' && snapshot && event.data.secuencia === snapshot.secuencia_maxima + 1) recordBid(event.data);
             }
             // Events trigger a query; they do not decide the official price, status or winner.
             void synchronize();
@@ -128,8 +133,11 @@
           connection = 'DESCONECTADO';
           transport.close();
         };
-        transport.onclose = () => {
+        transport.onclose = (event) => {
           if (disposed || socket !== transport) return;
+          // Invalid credentials or an unavailable lot require a new session/context,
+          // rather than repeating the same rejected handshake indefinitely.
+          if (event.code === 1008) { connection = 'DESCONECTADO'; return; }
           connection = 'RECONECTANDO';
           attempts += 1;
           retries = attempts;
@@ -144,7 +152,7 @@
     }
 
     void synchronize();
-    connect();
+    if (useLive) connect();
     const polling = setInterval(() => { if (!inFlight) void synchronize(); }, 10000);
     const clock = setInterval(() => {
       if (successfulAt) seconds = Math.max(0, remainingAtSync - Math.floor((Date.now() - successfulAt) / 1000));
@@ -165,7 +173,7 @@
     };
   });
 
-  function recordBid(bid: AcceptedBid) {
+  function recordBid(bid: PublicBid) {
     bids = [bid, ...bids.filter(item => item.puja_id !== bid.puja_id)].sort((a, b) => b.secuencia - a.secuencia).slice(0, 30);
   }
   function accepted(bid: AcceptedBid) { recordBid(bid); void refresh(); }
@@ -196,12 +204,12 @@
         {#if seconds === 0 && snapshot.estado === 'ACTIVO'}<p role="status" class="text-amber-200">Esperando la confirmación del cierre por el servidor.</p>{/if}
         <p class="text-xs text-slate-400">Última consulta: {lastUpdated}. Versión {snapshot.version}. El reloj no adjudica el lote.</p>
         {#if ['ADJUDICADO', 'CERRADO', 'DESIERTO', 'CANCELADO'].includes(snapshot.estado)}
-          <div class="border-t border-slate-700 pt-4 space-y-2"><p>Estado de cierre confirmado: {snapshot.estado}.</p><a href="/ordenes" class="text-emerald-300 underline">Consultar información de órdenes</a><p class="text-sm text-slate-400">Los pagos permanecen deshabilitados.</p></div>
+          <div class="border-t border-slate-700 pt-4 space-y-2"><p>Estado de cierre confirmado: {snapshot.estado}.</p><a href={`/ordenes?lote_id=${encodeURIComponent(lotId)}`} class="text-emerald-300 underline">Consultar información de órdenes</a><p class="text-sm text-slate-400">Los pagos permanecen deshabilitados.</p></div>
         {/if}
       </section>
       {#key contextKey}
-        <fieldset class="min-w-0" disabled={connection !== 'CONECTADO'} aria-label="Acciones de puja">
-          <PanelPujaRapida subastaId={lotId} precioActual={snapshot.precio_actual} incrementoMinimo={snapshot.incremento_minimo} proximaPujaMinima={snapshot.proxima_puja_minima} esAbierta={snapshot.es_abierta && connection === 'CONECTADO' && !error && !loading} onPujaExitosa={accepted} />
+        <fieldset class="min-w-0" disabled={!synchronized} aria-label="Acciones de puja">
+          <PanelPujaRapida subastaId={lotId} precioActual={snapshot.precio_actual} incrementoMinimo={snapshot.incremento_minimo} proximaPujaMinima={snapshot.proxima_puja_minima} esAbierta={snapshot.es_abierta && synchronized && !error && !loading} onPujaExitosa={accepted} />
         </fieldset>
       {/key}
     </div>

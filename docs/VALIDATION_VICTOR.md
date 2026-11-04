@@ -2,6 +2,28 @@
 
 Base: `Nicolas923-source/Ganadito`, commit `dde293bc977ac090d631b6c90a2cb4bb6efcb40e`. Validación inicial del 3 de noviembre de 2026 y repetición completa el 4 de noviembre de 2026 (America/Bogota).
 
+## Integración posterior con N01–N05 — 4 de noviembre de 2026
+
+Contrato #29 integrado en `2ffe7d4`; baseline original de Nicolás `26e8179` (N05 y dependencias), reunido con #35/#36 en la rama aislada `feature/victor/v04-v06-integracion-nicolas`. Esto no fusiona los PR de código en main ni acredita resolución de los [hallazgos](REVIEW_NICOLAS_2026-11-04.md).
+
+| Comprobación de integración | Evidencia local |
+|---|---|
+| `npm run typecheck` | Todos los workspaces correctos; Svelte 0 errores y 0 advertencias. |
+| `npm run build` | API, web Node, contratos y shared correctos. |
+| `npm test --workspace=@ganadito/web` | 5/5 correctas: clave, snapshot, envelope público y recibo privado separados. |
+| `npm run test:config` | 36/36 correctas: seis sondas de arranque/.env ficticio y treinta guardias de entorno real. No conectan DB. |
+| `npm run test:proxy` | 2/2 correctas tras compilar. |
+| `npm run test:e2e` | 56/56 correctas; omite los dos casos HTTP, ejecutados aparte. Fixtures explícitos. |
+| `npm run test:e2e:http` | 2/2 correctas: modo HTTP predeterminado sin WebSocket/token en URL, snapshot y puja REST. |
+| Regresiones rojo → verde | HTTP 200 inesperado no confirma registro/publicación/puja; 409 `IDEMPOTENCY_IN_PROGRESS` conserva la clave. Error 403 de paginación retira datos; cambio de contexto/ruta descarta respuestas anteriores. |
+| Configuración del recorrido real | Un test detectado con `--list`; TypeScript focal correcto. Guardia rechaza antes del import backend. Su ejecución real se reserva al job efímero de CI. |
+| API/DB/worker reales | Por comprobar en la CI de esta rama. No se ejecutaron pruebas backend contra el PostgreSQL local existente ni Neon. |
+| Revisión cruzada y staging | Pendientes; la revisión técnica del asistente detectó/corrigió el caso de idempotencia, pero no sustituye la revisión final de Nicolás. |
+
+La nueva suite real cubre registro VENDEDOR y publicación web, acceso COMPRADOR, puja del navegador, reintento persistido, cierre automático, orden autorizada y rechazo 404 ajeno. Usa datos ficticios y pagos apagados. No se conservan trazas, vídeos ni capturas del recorrido real. El WS operativo permanece deshabilitado por el hallazgo de logs de N04; el pasaporte público sigue inactivo por los pendientes N05.
+
+## Evidencia de la entrega inicial #35/#36
+
 | Comprobación | Resultado |
 |---|---|
 | Instalación del lockfile con `npm ci` | Correcta; Node 24.21.0, npm 11.19.0. |

@@ -31,6 +31,8 @@ Implementar una pantalla o pasar pruebas aisladas no cierra por sí solo una fil
 
 Una entrega web aislada puede revisarse antes si no rompe el modo operativo; las dependencias y contratos pendientes quedan explícitos. La cola describe el orden requerido y no afirma que estos PR ya existan ni que estén aprobados. Una rama de trabajo agregada debe dividirse en estas entregas antes de integrar.
 
+Actualización del 4 de noviembre de 2026: #29 contractual está integrado por autorización expresa; #35 y #36 de Víctor permanecen en borrador. La rama `feature/victor/v04-v06-integracion-nicolas` adapta la web al backend N01–N05 y prepara una prueba real efímera de CI, sin fusionar PR de código. Estado y evidencia en [VALIDATION_VICTOR.md](VALIDATION_VICTOR.md); bloqueos de Nicolás en [REVIEW_NICOLAS_2026-11-04.md](REVIEW_NICOLAS_2026-11-04.md).
+
 ## Qué prueba cada nivel
 
 - **Typecheck/build/lint:** coherencia estática y compilación de la versión probada. Un script sin reglas de lint no acredita estilo de todos los paquetes.

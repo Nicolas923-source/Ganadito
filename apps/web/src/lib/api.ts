@@ -6,8 +6,8 @@ export class ApiError extends Error {
   constructor(message: string, public status: number, public data?: unknown) { super(message); }
 }
 
-export async function apiRequest<T>(path: string, options: RequestInit & { auth?: boolean } = {}): Promise<T> {
-  const { auth = true, ...init } = options;
+export async function apiRequest<T>(path: string, options: RequestInit & { auth?: boolean; expectedStatus?: number } = {}): Promise<T> {
+  const { auth = true, expectedStatus, ...init } = options;
   const token = auth ? get(session).token : null;
   const headers = new Headers(init.headers);
   headers.set('Accept', 'application/json');
@@ -28,6 +28,9 @@ export async function apiRequest<T>(path: string, options: RequestInit & { auth?
     if (!response.ok) {
       const serverMessage = data && typeof data === 'object' && 'message' in data ? String(data.message) : '';
       throw new ApiError(response.status === 403 ? `Acceso denegado. ${serverMessage}`.trim() : serverMessage || `La solicitud falló (${response.status}).`, response.status, data);
+    }
+    if (expectedStatus !== undefined && response.status !== expectedStatus) {
+      throw new ApiError('No se pudo verificar la confirmación de la operación.', response.status, data);
     }
     // A response from a previous context must never populate the new context's screen.
     if (token && get(session).token !== token) throw new ApiError('La sesión cambió. Vuelve a consultar los datos.', 409);

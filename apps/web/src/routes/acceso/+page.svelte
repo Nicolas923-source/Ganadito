@@ -1,12 +1,13 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { signIn, registerAccount } from '#lib/auth.ts';
+  import { signIn, registerAccount, type RegistrationRole } from '#lib/auth.ts';
   import { session } from '#lib/session.ts';
   let creating = $state(false);
   let email = $state('');
   let password = $state('');
   let nombre = $state('');
   let organizacion = $state('');
+  let registrationRole = $state<RegistrationRole>('COMPRADOR');
   let busy = $state(false);
   let error = $state('');
   async function submit(event: SubmitEvent) {
@@ -14,7 +15,7 @@
     if (busy) return;
     busy = true; error = '';
     try {
-      if (creating) await registerAccount({ email: email.trim(), password, nombre: nombre.trim(), organizacion_nombre: organizacion.trim() });
+      if (creating) await registerAccount({ email: email.trim(), password, nombre: nombre.trim(), organizacion_nombre: organizacion.trim(), rol_inicial: registrationRole });
       else await signIn(email.trim(), password);
       password = '';
       await goto('/contexto');
@@ -32,6 +33,7 @@
     {#if creating}
       <label>Nombre<input bind:value={nombre} autocomplete="name" required maxlength="150" /></label>
       <label>Nombre de la organización<input bind:value={organizacion} autocomplete="organization" required maxlength="200" /></label>
+      <label>Quiero operar como<select bind:value={registrationRole} required><option value="COMPRADOR">Comprador</option><option value="VENDEDOR">Vendedor</option></select></label>
     {/if}
     <label>Correo electrónico<input type="email" bind:value={email} autocomplete="username" required maxlength="254" /></label>
     <label>Contraseña<input type="password" bind:value={password} autocomplete={creating ? 'new-password' : 'current-password'} required minlength={creating ? 8 : 1} /></label>

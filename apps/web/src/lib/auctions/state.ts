@@ -1,6 +1,6 @@
 import type { EstadoLote } from '@ganadito/contracts';
 
-// Transporte observado en subastas.types.ts de dde293b. No modifica el contrato compartido.
+// DTO de lectura del contrato v1. PostgreSQL confirma el estado a través de la API.
 export interface AuctionSnapshot {
   id: string;
   codigo_lote: string;
@@ -18,29 +18,20 @@ export interface AuctionSnapshot {
   es_abierta: boolean;
 }
 
-export interface AcceptedBid {
+export interface PublicBid {
   puja_id: string;
-  lote_id: string;
   monto: number;
   secuencia: number;
   nueva_version: number;
   nuevo_precio_actual: number;
   extension_aplicada: boolean;
   nueva_fecha_cierre: string;
-  idempotency_key: string;
   created_at: string;
 }
 
-export interface OrderEvent {
+export interface AcceptedBid extends PublicBid {
   lote_id: string;
-  orden_id: string;
-  comprador_id: string;
-  organizacion_compradora_id: string;
-  organizacion_vendedora_id: string;
-  monto_adjudicado: number;
-  comision_plataforma: number;
-  total_a_pagar: number;
-  estado: 'PENDIENTE_PAGO';
+  idempotency_key: string;
 }
 
 export interface BidAttempt { lotId: string; amount: number; sessionKey: string; key: string }
@@ -70,19 +61,37 @@ export function parseSnapshot(value: unknown, lotId: string): AuctionSnapshot {
   return value as unknown as AuctionSnapshot;
 }
 
-export type AuctionEvent = { kind: 'bid'; data: AcceptedBid } | { kind: 'order'; data: OrderEvent } | { kind: 'refresh' };
+const date = (value: unknown): value is string => nonempty(value) && Number.isFinite(Date.parse(value));
 
-export function parseAuctionEvent(value: unknown, lotId: string): AuctionEvent | null {
-  if (!record(value) || value.lote_id !== lotId) return null;
-  if (nonempty(value.puja_id) && ['monto', 'secuencia', 'nueva_version', 'nuevo_precio_actual'].every(key => finite(value[key])) &&
-    nonempty(value.created_at) && nonempty(value.nueva_fecha_cierre)) {
-    return { kind: 'bid', data: value as unknown as AcceptedBid };
+function publicBid(value: unknown): PublicBid | null {
+  if (!record(value) || !nonempty(value.puja_id) || !finite(value.monto) || value.monto <= 0 ||
+    !finite(value.nuevo_precio_actual) || value.nuevo_precio_actual <= 0 ||
+    !Number.isInteger(value.secuencia) || (value.secuencia as number) <= 0 ||
+    !Number.isInteger(value.nueva_version) || (value.nueva_version as number) <= 0 ||
+    typeof value.extension_aplicada !== 'boolean' || !date(value.created_at) || !date(value.nueva_fecha_cierre)) return null;
+  return { puja_id: value.puja_id, monto: value.monto, secuencia: value.secuencia as number,
+    nueva_version: value.nueva_version as number, nuevo_precio_actual: value.nuevo_precio_actual,
+    extension_aplicada: value.extension_aplicada, nueva_fecha_cierre: value.nueva_fecha_cierre, created_at: value.created_at };
+}
+
+export function parseBidReceipt(value: unknown, lotId: string): AcceptedBid {
+  const bid = publicBid(value);
+  if (!bid || !record(value) || value.lote_id !== lotId || !nonempty(value.idempotency_key)) {
+    throw new Error('No se pudo verificar la confirmación de la puja.');
   }
-  if (nonempty(value.orden_id) && nonempty(value.comprador_id) && nonempty(value.organizacion_compradora_id) &&
-    nonempty(value.organizacion_vendedora_id) && value.estado === 'PENDIENTE_PAGO' &&
-    ['monto_adjudicado', 'comision_plataforma', 'total_a_pagar'].every(key => finite(value[key]))) {
-    return { kind: 'order', data: value as unknown as OrderEvent };
+  return { ...bid, lote_id: lotId, idempotency_key: value.idempotency_key };
+}
+
+export type AuctionEvent = { kind: 'bid'; data: PublicBid } | { kind: 'refresh' };
+
+export function parseLiveEvent(value: unknown, lotId: string): AuctionEvent | null {
+  if (!record(value) || value.lote_id !== lotId || !record(value.data)) return null;
+  if (value.event_type === 'PUJA_ACEPTADA') {
+    const bid = publicBid(value.data);
+    return bid ? { kind: 'bid', data: bid } : null;
   }
-  if (value.estado === 'DESIERTO') return { kind: 'refresh' };
+  if (nonempty(value.data.codigo_lote) &&
+    ((value.event_type === 'SUBASTA_ADJUDICADA' && value.data.estado === 'ADJUDICADO' && finite(value.data.monto_adjudicado)) ||
+      (value.event_type === 'SUBASTA_DESIERTA' && value.data.estado === 'DESIERTO'))) return { kind: 'refresh' };
   return null;
 }

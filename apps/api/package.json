@@ -6,7 +6,8 @@
   "type": "module",
   "main": "./dist/index.js",
   "scripts": {
-    "dev": "echo \"Fastify API dev script ready for initial setup\"",
+    "dev": "node --env-file-if-exists=../../.env --import tsx --watch src/server.ts",
+    "start": "node --env-file-if-exists=../../.env --import tsx src/server.ts",
     "build": "tsc",
     "seed": "tsx src/seed/seed.ts",
     "typecheck": "tsc --noEmit",

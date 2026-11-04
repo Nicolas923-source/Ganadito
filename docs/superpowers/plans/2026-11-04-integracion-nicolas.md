@@ -1,6 +1,6 @@
 # Integración de la API de Nicolás — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** conectar las órdenes autorizadas, alinear el arranque y verificar web + API reales en una rama aislada, conservando bloqueadas las promociones con hallazgos de Nicolás.
 
@@ -33,9 +33,9 @@
 
 **Interfaces:** consume `apps/api/src/server.ts` de N01; produce comandos `dev:api`/`start:api` que cargan `.env` raíz si existe, respetando variables inyectadas. Puerto API 4000 y proxy coherentes. Registro web permite únicamente COMPRADOR/VENDEDOR (campo existente `rol_inicial`).
 
-- [ ] Probar carga del entorno con valores ficticios y registro VENDEDOR antes de cambiar scripts/formulario.
-- [ ] Implementar scripts y documentación sin nuevas dependencias ni cambios de backend; pagos `false`.
-- [ ] Verificar comandos con proceso aislado, typecheck y pruebas pertinentes; registrar commit.
+- [x] Probar carga del entorno con valores ficticios y registro VENDEDOR antes de cambiar scripts/formulario.
+- [x] Implementar scripts y documentación sin nuevas dependencias ni cambios de backend; pagos `false`.
+- [x] Verificar comandos con proceso aislado, typecheck y pruebas pertinentes; registrar commit.
 
 ## Task 2: órdenes autorizadas
 
@@ -43,19 +43,21 @@
 
 **Interfaces:** GET `/api/v1/ordenes?rol=comprador|vendedor&limit=20&cursor=...` devuelve `{data,next_cursor}`; GET `/ordenes/:id` devuelve orden. Orden: IDs, `codigo_lote`, estado, importes confirmados, comprador nullable, vendedor y fecha. Consumir `apiRequest`, `session` y signals existentes; no calcular comisiones ni resultados.
 
-- [ ] Escribir/regresar pruebas de lista, detalle, vacío, 404, 403, página siguiente, cursor repetido y cambio de contexto; comprobar rojo.
-- [ ] Implementar guardas DTO, listado, detalle y filtro local opcional `lote_id`; distinguir página sin coincidencias de ausencia global.
-- [ ] Mantener pago desactivado, verificar pruebas y typecheck; registrar commit.
+- [x] Escribir/regresar pruebas de lista, detalle, vacío, 404, 403, página siguiente, cursor repetido y cambio de contexto; comprobar rojo.
+- [x] Implementar guardas DTO, listado, detalle y filtro local opcional `lote_id`; distinguir página sin coincidencias de ausencia global.
+- [x] Mantener pago desactivado, verificar pruebas y typecheck; registrar commit.
 
 ## Task 3: tiempo real compatible y modo HTTP seguro
 
-**Files:** `apps/web/src/lib/auctions/**`, `apps/web/src/routes/subastas/[id]/+page.svelte`, componentes de subasta, `apps/web/src/env.ts`, `apps/web/src/lib/config.ts`, `tests/e2e/auctions.spec.ts`, config Playwright de fixtures.
+**Files:** `apps/web/src/lib/auctions/**`, `apps/web/src/routes/subastas/[id]/+page.svelte`, componentes de subasta, `apps/web/src/env.ts`, `apps/web/src/lib/config.ts`, `apps/web/src/lib/api.ts`, `tests/e2e/auctions.spec.ts`, config Playwright de fixtures.
 
 **Interfaces:** WS `{event_type,lote_id,data}` sin datos privados ni clave de idempotencia. Respuesta HTTP de puja conserva su clave. `PUBLIC_LIVE_AUCTIONS_ENABLED=false` por defecto: no enviar JWT por URL; usar polling oficial. En modo explícito de pruebas/habilitación, autenticación WS del contrato y snapshot posterior a abrir el socket actual. Cierre enlaza `/ordenes?lote_id=<id>` y nunca usa una orden inferida de WS.
 
-- [ ] Probar envelope nuevo, duplicados/saltos, cierre sin `orden_id`, ausencia de JWT en modo predeterminado y suspensión durante recuperación; comprobar rojo.
-- [ ] Implementar parser separado de recibos REST y eventos públicos, fallback HTTP visible y opt-in WS sin registrar URL/token.
-- [ ] Verificar suite completa de subastas, errores y reintento idempotente; registrar commit.
+Transferencia interna: el implementador de tiempo real edita `apps/web/src/lib/api.ts` para añadir `expectedStatus` opcional y exigir HTTP 201 antes de confirmar una puja; concluye al probar 200 inesperado como resultado incierto. Esta ruta pertenece a Víctor.
+
+- [x] Probar envelope nuevo, duplicados/saltos, cierre sin `orden_id`, ausencia de JWT en modo predeterminado y suspensión durante recuperación; comprobar rojo.
+- [x] Implementar parser separado de recibos REST y eventos públicos, fallback HTTP visible y opt-in WS sin registrar URL/token.
+- [x] Verificar suite completa de subastas, errores y reintento idempotente; registrar commit.
 
 ## Task 4: navegador + API reales y revisión entregable
 
@@ -63,9 +65,9 @@
 
 **Interfaces:** launcher de pruebas importa `startServer({logger:false})` sin modificar backend; exige DB efímera y pagos apagados. CI arranca API/Redis reales, crea cuentas ficticias por API y ejercita acceso, publicación, puja, cierre y consulta de orden. Fixtures y suite real permanecen separados; no afirmar que esto valida un proveedor externo.
 
-- [ ] Añadir guardia de destino antes de cualquier conexión y probar rechazo de DB no permitida.
-- [ ] Crear suite real con trazas de red apagadas y datos ficticios; añadir job CI aislado.
-- [ ] Reproducir y publicar hallazgos de revisión en los PR correspondientes; no corregir archivos de Nicolás.
+- [x] Añadir guardia de destino antes de cualquier conexión y probar rechazo de DB no permitida.
+- [x] Crear suite real con trazas de red apagadas y datos ficticios; añadir job CI aislado.
+- [x] Reproducir y publicar hallazgos de revisión en los PR correspondientes; no corregir archivos de Nicolás.
 - [ ] Ejecutar checks locales, publicar rama/PR dependiente en borrador y observar CI hasta su resultado. Registrar bloqueos que permanezcan.
 
 ## Estado y decisiones

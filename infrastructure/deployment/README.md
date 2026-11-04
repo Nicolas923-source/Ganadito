@@ -17,6 +17,14 @@ Este directorio prepara V06. No activa producción, no provisiona servicios ni e
 
 El servidor web usa `@sveltejs/adapter-node` `6.0.1` con SvelteKit `3.1.1`. `npm run start --workspace=@ganadito/web` ejecuta el artefacto `build/index.js` desde la web; el host debe configurar el entorno del proceso y enrutar REST/WS. El `build` por sí solo no demuestra que el host soporte proxy REST, secretos de servidor ni WebSocket. No usar el servidor Vite de desarrollo como servidor de staging.
 
+## Arranque API de integración
+
+Con Node 24, `npm run start:api` ejecuta `apps/api/src/server.ts` mediante `tsx`; `npm run dev:api` añade vigilancia para desarrollo. Los scripts cargan el `.env` de la raíz si existe y conservan las variables inyectadas por el host. No copiar un `.env` local a staging: inyectar la configuración del entorno autorizado.
+
+El ejemplo local fija `API_HOST=127.0.0.1`, `API_PORT=4000` y `API_INTERNAL_URL=http://127.0.0.1:4000`. Ajustar el host privado de escucha y el destino del proxy de forma coordinada en staging. Establecer expresamente `RUN_MIGRATIONS_ON_START=false` hasta que Nicolás confirme el destino y la estrategia de migración; N01 migra por defecto fuera de producción. El ejemplo también fija `START_WORKERS=false`: Nicolás coordina su activación para outbox y cierre automático, que por defecto N01 inicia si falta esa variable. Activar ambos flags solo en local ficticio o staging coordinado. El servidor comprueba PostgreSQL antes de escuchar y cierra conexiones y workers con `SIGINT`/`SIGTERM`.
+
+Mantener `PAYMENTS_ENABLED=false` y dejar `WEBHOOK_SECRET` y `PAYMENTS_CHECKOUT_BASE_URL` vacíos. `PAYMENTS_PROVIDER=SIMULADOR` describe configuración y no habilita un proveedor externo. El comando de arranque y la prueba aislada de entorno no sustituyen la evidencia PostgreSQL, Redis, navegador y revisión cruzada de la versión final.
+
 ## Preparar una versión
 
 1. Integrar contratos y dependencias en el orden de [VICTOR_DELIVERY.md](../../docs/VICTOR_DELIVERY.md). Actualizar la rama y obtener revisión cruzada del código final.
@@ -61,10 +69,12 @@ El servidor web usa `@sveltejs/adapter-node` `6.0.1` con SvelteKit `3.1.1`. `npm
    sha256sum infrastructure/database/migrations/*.sql package-lock.json
    ```
 4. Copiar [release-record.example.md](release-record.example.md) a un registro de versión sin secretos. Registrar SHA web, SHA API, contrato, hashes, migraciones realmente aplicadas, resultados y versión anterior recuperable. Nicolás confirma el estado real de la base; la lista de archivos no demuestra aplicación.
-5. Confirmar host, entorno, base ficticia aislada, origen REST y ruta WS. Nicolás proporciona el comando N01 y el ciclo de vida de workers. Hasta entonces no registrar la API como operativa.
+5. Confirmar host, entorno, base ficticia aislada, origen REST y ruta WS. Usar el arranque N01 anterior y coordinar con Nicolás migraciones y workers. Registrar la API como operativa únicamente después de verificar el recorrido real del SHA revisado.
 6. El responsable de staging despliega únicamente el artefacto revisado en el entorno autorizado. Este runbook no autoriza producción ni crea un despliegue automático en CI.
 
 ## Recorrido real de aceptación
+
+La integración añade el job `browser-real`: web 4180, API 4181, PostGIS 16-3.4 y Redis 7 efímeros, cuentas ficticias, pagos y WS apagados. `npm run test:e2e:real` exige las guardias documentadas en [DEVELOPMENT.md](../../docs/DEVELOPMENT.md); no usar una base existente para ejecutarlo. Su resultado acredita únicamente el recorrido de ese SHA en CI y no constituye despliegue ni aceptación de staging. Mantener `PUBLIC_LIVE_AUCTIONS_ENABLED=false` hasta corregir el registro de tokens de N04.
 
 Usar datos ficticios acordados con Nicolás y dos organizaciones. Adjuntar evidencia de navegador y API con fecha, SHA e IDs ficticios. No guardar contraseñas ni JWT en capturas/reportes compartidos.
 

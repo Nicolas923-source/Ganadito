@@ -1,6 +1,7 @@
-import { PUBLIC_API_URL, PUBLIC_WS_URL } from '$app/env/public';
+import { PUBLIC_API_URL, PUBLIC_WS_URL, PUBLIC_LIVE_AUCTIONS_ENABLED } from '$app/env/public';
 
 export const apiBaseUrl = PUBLIC_API_URL.replace(/\/$/, '');
+export const liveAuctionsEnabled = PUBLIC_LIVE_AUCTIONS_ENABLED;
 
 export function apiUrl(path: string): string {
   if (!path.startsWith('/api/v1/') || path.startsWith('//') || path.includes('..')) {

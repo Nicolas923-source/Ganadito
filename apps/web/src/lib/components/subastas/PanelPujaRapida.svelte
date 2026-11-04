@@ -1,7 +1,7 @@
 <script lang="ts">
   import { apiRequest, ApiError } from '#lib/api.ts';
   import { session } from '#lib/session.ts';
-  import { bidAttempt, parseAuctionEvent, type BidAttempt, type AcceptedBid } from '#lib/auctions/state.ts';
+  import { bidAttempt, parseBidReceipt, type BidAttempt, type AcceptedBid } from '#lib/auctions/state.ts';
 
   interface Props {
     subastaId: string;
@@ -48,22 +48,25 @@
     try {
       const response = await apiRequest<unknown>(`/api/v1/subastas/${encodeURIComponent(subastaId)}/pujas`, {
         method: 'POST',
+        expectedStatus: 201,
         headers: { 'Idempotency-Key': attempt.key },
         body: JSON.stringify({ monto: attempt.amount, idempotency_key: attempt.key })
       });
       if (sessionKey !== attempt.sessionKey || subastaId !== attempt.lotId) return;
-      const event = parseAuctionEvent(response, attempt.lotId);
-      if (event?.kind !== 'bid' || event.data.idempotency_key !== attempt.key || event.data.monto !== attempt.amount) {
+      const receipt = parseBidReceipt(response, attempt.lotId);
+      if (receipt.idempotency_key !== attempt.key || receipt.monto !== attempt.amount) {
         throw new Error('No se pudo verificar la confirmación de la puja.');
       }
-      confirmation = `El servidor confirmó tu puja de S/ ${event.data.monto.toFixed(2)} (secuencia ${event.data.secuencia}).`;
+      confirmation = `El servidor confirmó tu puja de S/ ${receipt.monto.toFixed(2)} (secuencia ${receipt.secuencia}).`;
       pending = null;
       amount = undefined;
-      onPujaExitosa?.(event.data);
+      onPujaExitosa?.(receipt);
     } catch (cause) {
       if (sessionKey !== attempt.sessionKey || subastaId !== attempt.lotId) return;
       error = cause instanceof Error ? cause.message : 'No se pudo enviar la puja.';
-      const definitive = cause instanceof ApiError && cause.status >= 400 && cause.status < 500;
+      const processing = cause instanceof ApiError && cause.status === 409 && cause.data !== null
+        && typeof cause.data === 'object' && 'code' in cause.data && cause.data.code === 'IDEMPOTENCY_IN_PROGRESS';
+      const definitive = cause instanceof ApiError && cause.status >= 400 && cause.status < 500 && !processing;
       uncertain = !definitive;
       if (definitive) pending = null;
     } finally {

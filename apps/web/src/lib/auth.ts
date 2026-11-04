@@ -4,6 +4,7 @@ import { beginSessionValidation, clearSession, session, sessionStorageKey, setSe
 
 interface Profile { user: SessionUser; activeContext: Membership | null; memberships: Membership[] }
 interface AuthResponse { access_token: string; user?: SessionUser; active_context: Membership | null }
+export type RegistrationRole = 'COMPRADOR' | 'VENDEDOR';
 let generation = 0;
 
 async function loadProfile(token: string, currentGeneration: number) {
@@ -28,9 +29,9 @@ export async function signIn(email: string, password: string) {
   if (current === generation) await loadProfile(result.access_token, current);
 }
 
-export async function registerAccount(data: { email: string; password: string; nombre: string; organizacion_nombre: string }) {
+export async function registerAccount(data: { email: string; password: string; nombre: string; organizacion_nombre: string; rol_inicial: RegistrationRole }) {
   const current = ++generation;
-  const result = await apiRequest<AuthResponse>('/api/v1/auth/register', { auth: false, method: 'POST', body: JSON.stringify(data) });
+  const result = await apiRequest<AuthResponse>('/api/v1/auth/register', { auth: false, method: 'POST', expectedStatus: 201, body: JSON.stringify(data) });
   if (current === generation) await loadProfile(result.access_token, current);
 }
 
