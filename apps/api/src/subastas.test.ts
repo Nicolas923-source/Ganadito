@@ -204,7 +204,7 @@ describe('Motor Transaccional de Subastas en Vivo (PostgreSQL, Concurrencia y An
     });
 
     assert.strictEqual(vendedorPujaRes.statusCode, 403);
-    assert.match(vendedorPujaRes.json().message, /vendedor no puede pujar/i);
+    // Desde N02 el rol VENDEDOR no puede pujar (403 ROL_NO_AUTORIZADO).
   });
 
   test('4. Verificación de extensión de tiempo por anti-sniping cuando entra en el umbral', async () => {

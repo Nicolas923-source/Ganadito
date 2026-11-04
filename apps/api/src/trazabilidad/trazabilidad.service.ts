@@ -10,6 +10,26 @@ import {
   calcularHashEvento
 } from '@ganadito/contracts';
 
+const CLAVE_SENSIBLE = /(lat|lon|lng|coord|gps|ubicacion|direccion|geo|dni|ruc|telefono|celular|email|correo|placa)/i;
+
+/** Redacta (recursivamente) las claves de metadata que revelan ubicación o datos personales. */
+export function redactarMetadata(valor: unknown): Record<string, unknown> {
+  const redactar = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(redactar);
+    if (v && typeof v === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+        out[k] = CLAVE_SENSIBLE.test(k) ? '[REDACTADO]' : redactar(val);
+      }
+      return out;
+    }
+    return v;
+  };
+  return (redactar(valor ?? {}) as Record<string, unknown>) ?? {};
+}
+
+const EVENTOS_CAMAL = new Set(['PESAJE_CAMAL', 'INSPECCION_POST_MORTEM']);
+
 export class TrazabilidadError extends Error {
   constructor(
     message: string,
@@ -130,7 +150,8 @@ export class TrazabilidadService {
     userId: string,
     activeOrgId: string,
     bovinoId: string,
-    input: AgregarEventoInput
+    input: AgregarEventoInput,
+    activeRole?: string
   ): Promise<EventoTrazabilidad> {
     if (!input.event_type) {
       throw new TrazabilidadError('El campo event_type es obligatorio.', 400);
@@ -150,6 +171,15 @@ export class TrazabilidadService {
         throw new TrazabilidadError('Bovino no encontrado.', 404);
       }
       const bovino = bovinoRes.rows[0]!;
+
+      // Autorización: la organización propietaria registra cualquier evento; un operador de
+      // camal de otra organización solo puede registrar eventos de faena. Nadie más escribe
+      // en un pasaporte ajeno, y solo el propietario transfiere la propiedad.
+      const esPropietario = bovino.organizacion_id === activeOrgId;
+      const esEventoCamal = EVENTOS_CAMAL.has(input.event_type);
+      if (!esPropietario && !(esEventoCamal && activeRole === 'OPERADOR_CAMAL')) {
+        throw new TrazabilidadError('No tiene permiso para registrar eventos en este bovino.', 403);
+      }
 
       // 2. Obtener el último evento para calcular secuencia y prev_hash encadenado
       const lastEventRes = await client.query<EventoTrazabilidad>(
@@ -186,12 +216,17 @@ export class TrazabilidadService {
       // Si es CAMBIO_PROPIEDAD con nueva organización receptora
       if (input.event_type === 'CAMBIO_PROPIEDAD') {
         const nuevaOrgId = (metadata as any)?.nueva_organizacion_id;
-        if (nuevaOrgId) {
-          await client.query(
-            `UPDATE bovinos SET organizacion_id = $1, estado = 'TRANSFERIDO', updated_at = NOW() WHERE id = $2`,
-            [nuevaOrgId, bovinoId]
-          );
+        if (typeof nuevaOrgId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(nuevaOrgId)) {
+          throw new TrazabilidadError('CAMBIO_PROPIEDAD requiere metadata.nueva_organizacion_id.', 400);
         }
+        const destino = await client.query('SELECT 1 FROM organizaciones WHERE id = $1', [nuevaOrgId]);
+        if (destino.rowCount === 0) {
+          throw new TrazabilidadError('La organización de destino no existe.', 400);
+        }
+        await client.query(
+          `UPDATE bovinos SET organizacion_id = $1, estado = 'TRANSFERIDO', updated_at = NOW() WHERE id = $2`,
+          [nuevaOrgId, bovinoId]
+        );
       }
 
       // 3. Insertar el evento encadenado inmutable
@@ -241,7 +276,7 @@ export class TrazabilidadService {
   /**
    * Consulta el pasaporte digital completo: datos del bovino y eventos ordenados por secuencia.
    */
-  async obtenerPasaporte(bovinoId: string): Promise<PasaporteDigitalResponse> {
+  async obtenerPasaporte(bovinoId: string, viewerOrgId?: string): Promise<PasaporteDigitalResponse & { vista: 'COMPLETA' | 'PUBLICA' }> {
     const bovinoRes = await this.pool.query<Bovino>(
       `SELECT * FROM bovinos WHERE id = $1`,
       [bovinoId]
@@ -258,9 +293,16 @@ export class TrazabilidadService {
       [bovinoId]
     );
 
+    // Vista pública (QR): sin autor de cada evento y con la metadata sensible redactada
+    // (ubicación, documentos, contacto). Los hashes se conservan: la integridad se verifica
+    // con GET /bovinos/:id/verificar, que recalcula en el servidor.
+    if (viewerOrgId && viewerOrgId === bovino.organizacion_id) {
+      return { bovino, eventos: eventosRes.rows, vista: 'COMPLETA' };
+    }
     return {
       bovino,
-      eventos: eventosRes.rows
+      eventos: eventosRes.rows.map((e) => ({ ...e, autor_id: null as unknown as string, metadata: redactarMetadata(e.metadata) })),
+      vista: 'PUBLICA'
     };
   }
 

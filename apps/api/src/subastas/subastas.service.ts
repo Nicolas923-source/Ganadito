@@ -8,8 +8,24 @@ import type {
   PujaAceptadaResponse
 } from './subastas.types.js';
 
+export type CodigoErrorSubasta =
+  | 'IDEMPOTENCY_KEY_REUSED'
+  | 'IDEMPOTENCY_IN_PROGRESS'
+  | 'PUJA_INSUFICIENTE'
+  | 'LOTE_NO_ABIERTO'
+  | 'PUJA_PROPIO_LOTE';
+
+const ESTADOS_INICIALES_LOTE = new Set(['ACTIVO', 'BORRADOR']);
+
+/** Convierte un monto a céntimos; null si no es un número con como máximo 2 decimales. */
+function aCentimos(valor: unknown): number | null {
+  if (typeof valor !== 'number' || !Number.isFinite(valor)) return null;
+  const c = Math.round(valor * 100);
+  return Math.abs(c - valor * 100) < 1e-6 ? c : null;
+}
+
 export class SubastaError extends Error {
-  constructor(message: string, public statusCode: number = 400) {
+  constructor(message: string, public statusCode: number = 400, public code?: CodigoErrorSubasta) {
     super(message);
     this.name = 'SubastaError';
   }
@@ -23,7 +39,8 @@ export class SubastasService {
    */
   async crearLote(
     vendedorOrgId: string,
-    input: CrearLoteSubastaInput
+    input: CrearLoteSubastaInput,
+    creadoPorUserId?: string
   ): Promise<LoteSubastaResponse> {
     const {
       codigo_lote,
@@ -45,10 +62,27 @@ export class SubastasService {
     if (!fecha_cierre) {
       throw new SubastaError('fecha_cierre es obligatoria.', 400);
     }
+    if (!ESTADOS_INICIALES_LOTE.has(estado)) {
+      throw new SubastaError('estado inicial inválido: solo se admite ACTIVO o BORRADOR.', 400);
+    }
+    for (const [campo, valor] of [
+      ['anti_sniping_seconds', anti_sniping_seconds],
+      ['anti_sniping_extension', anti_sniping_extension]
+    ] as const) {
+      if (!Number.isInteger(valor) || valor < 0 || valor > 3600) {
+        throw new SubastaError(`${campo} debe ser un entero entre 0 y 3600.`, 400);
+      }
+    }
+    if (aCentimos(precio_base) === null || aCentimos(incremento_minimo) === null) {
+      throw new SubastaError('precio_base e incremento_minimo admiten como máximo 2 decimales.', 400);
+    }
 
     const fechaInicioDate = fecha_inicio ? new Date(fecha_inicio) : new Date();
     const fechaCierreDate = new Date(fecha_cierre);
 
+    if (isNaN(fechaInicioDate.getTime())) {
+      throw new SubastaError('fecha_inicio no es una fecha válida.', 400);
+    }
     if (isNaN(fechaCierreDate.getTime())) {
       throw new SubastaError('fecha_cierre no es una fecha válida.', 400);
     }
@@ -72,9 +106,10 @@ export class SubastasService {
          fecha_cierre,
          anti_sniping_seconds,
          anti_sniping_extension,
-         version
+         version,
+         creado_por_user_id
        )
-       VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8, $9, 1)
+       VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8, $9, 1, $10)
        RETURNING
          id,
          codigo_lote,
@@ -100,7 +135,8 @@ export class SubastasService {
         fechaInicioDate.toISOString(),
         fechaCierreDate.toISOString(),
         anti_sniping_seconds,
-        anti_sniping_extension
+        anti_sniping_extension,
+        creadoPorUserId ?? null
       ]
     );
 
@@ -174,17 +210,25 @@ export class SubastasService {
   ): Promise<PujaAceptadaResponse> {
     const { monto, idempotency_key } = input;
 
-    if (!idempotency_key || !idempotency_key.trim()) {
+    if (!idempotency_key || typeof idempotency_key !== 'string' || !idempotency_key.trim()) {
       throw new SubastaError('idempotency_key es obligatoria para emitir una puja.', 400);
     }
-    if (typeof monto !== 'number' || monto <= 0) {
-      throw new SubastaError('monto debe ser un número positivo mayor a 0.', 400);
+    const trimmedKey = idempotency_key.trim();
+    if (trimmedKey.length > 100) {
+      throw new SubastaError('idempotency_key admite como máximo 100 caracteres.', 400);
+    }
+    const montoCentimos = aCentimos(monto);
+    if (montoCentimos === null || montoCentimos <= 0) {
+      throw new SubastaError('monto debe ser un número positivo con como máximo 2 decimales.', 400);
+    }
+    if (!activeOrgId) {
+      throw new SubastaError('Debe pujar con una organización activa.', 403);
     }
 
-    const trimmedKey = idempotency_key.trim();
+    // La huella identifica la operación lógica: mismo usuario + lote + monto.
     const payloadHash = crypto
       .createHash('sha256')
-      .update(JSON.stringify({ loteId, monto }))
+      .update(JSON.stringify({ userId, loteId, montoCentimos }))
       .digest('hex');
 
     const client = await this.pool.connect();
@@ -192,60 +236,71 @@ export class SubastasService {
     try {
       await client.query('BEGIN');
 
-      // 1. Comprobar y reservar idempotencia
-      const idempRes = await client.query<{
-        status: string;
-        response_code: number;
-        response_body: PujaAceptadaResponse;
-      }>(
-        `SELECT status, response_code, response_body
-         FROM idempotency_records
-         WHERE user_id = $1 AND operation = 'EMITIR_PUJA' AND key = $2
-         FOR UPDATE`,
-        [userId, trimmedKey]
+      // 1. Reservar la clave. Si otra transacción la está insertando, este INSERT espera a que
+      //    termine: si confirmó, no inserta (rowCount 0) y leemos su resultado; si revirtió, inserta.
+      const reserva = await client.query(
+        `INSERT INTO idempotency_records (user_id, operation, key, payload_hash, status)
+         VALUES ($1, 'EMITIR_PUJA', $2, $3, 'PROCESANDO')
+         ON CONFLICT (user_id, operation, key) DO NOTHING`,
+        [userId, trimmedKey, payloadHash]
       );
 
-      if (idempRes.rows.length > 0) {
-        const record = idempRes.rows[0]!;
-        if (record.status === 'PROCESANDO') {
-          throw new SubastaError('Existe una puja en proceso con esta misma clave de idempotencia.', 409);
-        }
-        if (record.status === 'COMPLETED') {
-          // Devolver el resultado anterior sin reejecutar (Idempotencia pura)
-          await client.query('COMMIT');
-          return record.response_body;
-        }
-      } else {
-        // Reservar en estado PROCESANDO
-        await client.query(
-          `INSERT INTO idempotency_records (user_id, operation, key, payload_hash, status)
-           VALUES ($1, 'EMITIR_PUJA', $2, $3, 'PROCESANDO')`,
-          [userId, trimmedKey, payloadHash]
+      if (reserva.rowCount === 0) {
+        const previo = await client.query<{
+          status: string;
+          payload_hash: string;
+          response_body: PujaAceptadaResponse;
+        }>(
+          `SELECT status, payload_hash, response_body
+           FROM idempotency_records
+           WHERE user_id = $1 AND operation = 'EMITIR_PUJA' AND key = $2
+           FOR UPDATE`,
+          [userId, trimmedKey]
         );
+        const record = previo.rows[0];
+
+        if (record && record.payload_hash !== payloadHash) {
+          throw new SubastaError(
+            'La clave de idempotencia ya se usó con otra solicitud (lote o monto distinto).',
+            422,
+            'IDEMPOTENCY_KEY_REUSED'
+          );
+        }
+        if (!record || record.status !== 'COMPLETED') {
+          throw new SubastaError(
+            'Existe una puja en proceso con esta misma clave de idempotencia.',
+            409,
+            'IDEMPOTENCY_IN_PROGRESS'
+          );
+        }
+        await client.query('COMMIT');
+        return record.response_body;
       }
 
-      // 2. Bloqueo pesimista de la fila del lote en subasta (FOR UPDATE)
+      // 2. Bloqueo pesimista del lote. Todos los tiempos se evalúan con el reloj de PostgreSQL.
       const loteRes = await client.query<{
         id: string;
         vendedor_id: string;
         estado: string;
-        precio_actual: number;
-        incremento_minimo: number;
-        fecha_cierre: string;
+        precio_actual_centimos: string;
+        incremento_minimo_centimos: string;
+        no_iniciado: boolean;
+        segundos_restantes: number;
+        fecha_cierre: Date;
         anti_sniping_seconds: number;
         anti_sniping_extension: number;
-        version: number;
       }>(
         `SELECT
            id,
            vendedor_id,
            estado,
-           precio_actual::float,
-           incremento_minimo::float,
+           ROUND(precio_actual * 100)::bigint AS precio_actual_centimos,
+           ROUND(incremento_minimo * 100)::bigint AS incremento_minimo_centimos,
+           fecha_inicio > NOW() AS no_iniciado,
+           EXTRACT(EPOCH FROM (fecha_cierre - NOW()))::float AS segundos_restantes,
            fecha_cierre,
            anti_sniping_seconds,
-           anti_sniping_extension,
-           version
+           anti_sniping_extension
          FROM lotes_subasta
          WHERE id = $1
          FOR UPDATE`,
@@ -258,41 +313,51 @@ export class SubastasService {
 
       const lote = loteRes.rows[0]!;
 
-      // 3. Validaciones transaccionales del lote
       if (lote.estado !== 'ACTIVO') {
-        throw new SubastaError(`El lote no se encuentra activo para recibir ofertas (estado: ${lote.estado}).`, 400);
-      }
-
-      const fechaCierreCurrent = new Date(lote.fecha_cierre);
-      const ahora = new Date();
-
-      if (fechaCierreCurrent.getTime() <= ahora.getTime()) {
-        throw new SubastaError('La subasta ha expirado y no admite nuevas pujas.', 400);
-      }
-
-      if (activeOrgId && lote.vendedor_id === activeOrgId) {
-        throw new SubastaError('El vendedor no puede pujar por su propio lote de subasta.', 403);
-      }
-
-      const minRequerido = Number((lote.precio_actual + lote.incremento_minimo).toFixed(2));
-      if (monto < minRequerido) {
         throw new SubastaError(
-          `El monto ofertado (${monto}) es inferior al mínimo requerido (${minRequerido}).`,
-          400
+          `El lote no se encuentra activo para recibir ofertas (estado: ${lote.estado}).`,
+          400,
+          'LOTE_NO_ABIERTO'
+        );
+      }
+      if (lote.no_iniciado) {
+        throw new SubastaError('La subasta todavía no ha iniciado.', 400, 'LOTE_NO_ABIERTO');
+      }
+      if (lote.segundos_restantes <= 0) {
+        throw new SubastaError('La subasta ha expirado y no admite nuevas pujas.', 400, 'LOTE_NO_ABIERTO');
+      }
+
+      // 3. Nadie de la organización vendedora (con cualquier rol) puja por el lote.
+      const miembroVendedor = await client.query(
+        `SELECT 1 FROM user_organizaciones_roles WHERE user_id = $1 AND organizacion_id = $2 LIMIT 1`,
+        [userId, lote.vendedor_id]
+      );
+      if (activeOrgId === lote.vendedor_id || (miembroVendedor.rowCount ?? 0) > 0) {
+        throw new SubastaError(
+          'El vendedor no puede pujar por su propio lote de subasta.',
+          403,
+          'PUJA_PROPIO_LOTE'
         );
       }
 
-      // 4. Regla Anti-sniping
-      const segundosRestantes = (fechaCierreCurrent.getTime() - ahora.getTime()) / 1000;
-      let extensionAplicada = false;
-      let nuevaFechaCierre = fechaCierreCurrent;
-
-      if (segundosRestantes <= lote.anti_sniping_seconds) {
-        extensionAplicada = true;
-        nuevaFechaCierre = new Date(fechaCierreCurrent.getTime() + lote.anti_sniping_extension * 1000);
+      const minRequeridoCentimos =
+        Number(lote.precio_actual_centimos) + Number(lote.incremento_minimo_centimos);
+      if (montoCentimos < minRequeridoCentimos) {
+        throw new SubastaError(
+          `El monto ofertado (${monto}) es inferior al mínimo requerido (${(minRequeridoCentimos / 100).toFixed(2)}).`,
+          400,
+          'PUJA_INSUFICIENTE'
+        );
       }
 
-      // 5. Asignar secuencia incremental estrictamente monótona del lote
+      // 4. Anti-sniping: extender desde la fecha de cierre vigente.
+      const extensionAplicada = lote.segundos_restantes <= lote.anti_sniping_seconds;
+      const fechaCierreActual = new Date(lote.fecha_cierre);
+      const nuevaFechaCierre = extensionAplicada
+        ? new Date(fechaCierreActual.getTime() + lote.anti_sniping_extension * 1000)
+        : fechaCierreActual;
+
+      // 5. Secuencia monótona (protegida por el FOR UPDATE del lote y uq_lote_secuencia).
       const seqRes = await client.query<{ next_secuencia: number }>(
         `SELECT COALESCE(MAX(secuencia), 0) + 1 AS next_secuencia
          FROM subasta_pujas
@@ -300,52 +365,52 @@ export class SubastasService {
         [loteId]
       );
       const siguienteSecuencia = Number(seqRes.rows[0]!.next_secuencia);
+      const montoFinal = montoCentimos / 100;
 
-      // 6. Insertar en subasta_pujas
       const pujaRes = await client.query<{ id: string; created_at: string }>(
-        `INSERT INTO subasta_pujas (lote_id, postor_id, monto, secuencia, idempotency_key)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO subasta_pujas (lote_id, postor_id, organizacion_postora_id, monto, secuencia, idempotency_key)
+         VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING id, created_at`,
-        [loteId, userId, monto, siguienteSecuencia, trimmedKey]
+        [loteId, userId, activeOrgId, montoFinal, siguienteSecuencia, trimmedKey]
       );
       const puja = pujaRes.rows[0]!;
 
-      // 7. Actualizar el lote con nuevo precio, ganador, versión y nueva fecha de cierre si hubo extensión
       const updateLoteRes = await client.query<{ version: number }>(
         `UPDATE lotes_subasta
          SET precio_actual = $1,
              postor_ganador_id = $2,
-             fecha_cierre = $3,
+             organizacion_ganadora_id = $3,
+             fecha_cierre = $4,
              version = version + 1,
              updated_at = NOW()
-         WHERE id = $4
+         WHERE id = $5
          RETURNING version`,
-        [monto, userId, nuevaFechaCierre.toISOString(), loteId]
+        [montoFinal, userId, activeOrgId, nuevaFechaCierre.toISOString(), loteId]
       );
       const nuevaVersion = updateLoteRes.rows[0]!.version;
 
-      // 8. Construir payload de respuesta
       const responsePayload: PujaAceptadaResponse = {
         puja_id: puja.id,
         lote_id: loteId,
-        monto,
+        monto: montoFinal,
         secuencia: siguienteSecuencia,
         nueva_version: nuevaVersion,
-        nuevo_precio_actual: monto,
+        nuevo_precio_actual: montoFinal,
         extension_aplicada: extensionAplicada,
         nueva_fecha_cierre: nuevaFechaCierre.toISOString(),
         idempotency_key: trimmedKey,
         created_at: puja.created_at
       };
 
-      // 9. Registrar evento en outbox_events para publicación asíncrona hacia WebSockets
+      // 6. Evento outbox en la misma transacción. El payload público no lleva la clave de
+      //    idempotencia (es un dato del cliente que puja).
+      const { idempotency_key: _clavePrivada, ...eventoPublico } = responsePayload;
       await client.query(
         `INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload, status)
          VALUES ('LOTE_SUBASTA', $1, 'PUJA_ACEPTADA', $2, 'PENDIENTE')`,
-        [loteId, JSON.stringify(responsePayload)]
+        [loteId, JSON.stringify(eventoPublico)]
       );
 
-      // 10. Actualizar registro de idempotencia a COMPLETED
       await client.query(
         `UPDATE idempotency_records
          SET status = 'COMPLETED',

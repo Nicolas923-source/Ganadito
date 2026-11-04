@@ -27,13 +27,22 @@ export interface MembershipInfo {
   permisos: Record<string, unknown>;
 }
 
+export const ROLES_AUTOREGISTRO_PERMITIDOS: readonly RolOrganizacion[] = ['COMPRADOR', 'VENDEDOR'];
+
+export interface RegisterOptions {
+  allowInternalRoles?: boolean;
+}
+
 export class AuthService {
   constructor(private pool: pg.Pool) {}
 
   /**
    * Registra un nuevo usuario y su organización inicial con rol activo.
    */
-  async register(data: RegisterUserBody): Promise<{
+  async register(
+    data: RegisterUserBody,
+    options?: RegisterOptions
+  ): Promise<{
     user: Omit<UserRow, 'password_hash'>;
     activeContext: {
       organizacion_id: string;
@@ -41,6 +50,16 @@ export class AuthService {
       rol: RolOrganizacion;
     };
   }> {
+    const rolInicial: RolOrganizacion = data.rol_inicial ?? 'COMPRADOR';
+
+    // allowInternalRoles sólo debe usarse desde código interno (seeders, tests, alta administrativa),
+    // nunca a partir de datos del cliente.
+    const isWhitelisted = ROLES_AUTOREGISTRO_PERMITIDOS.includes(rolInicial);
+
+    if (!isWhitelisted && options?.allowInternalRoles !== true) {
+      throw new AuthError('Rol no permitido para autoregistro', 400);
+    }
+
     const client = await this.pool.connect();
 
     try {
@@ -75,7 +94,6 @@ export class AuthService {
       const org = orgRes.rows[0]!;
 
       // 5. Asignar rol inicial como contexto activo
-      const rolInicial: RolOrganizacion = data.rol_inicial ?? 'COMPRADOR';
       await client.query(
         `INSERT INTO user_organizaciones_roles (user_id, organizacion_id, rol, is_active_context)
          VALUES ($1, $2, $3, TRUE)`,
@@ -267,7 +285,7 @@ export class AuthService {
         `INSERT INTO user_organizaciones_roles (user_id, organizacion_id, rol, is_active_context)
          VALUES ($1, $2, $3, $4)
          ON CONFLICT (user_id, organizacion_id, rol)
-         DO UPDATE SET is_active_context = EXCLUDED.is_active_context`,
+         DO UPDATE SET is_active_context = user_organizaciones_roles.is_active_context OR EXCLUDED.is_active_context`,
         [userId, orgId, rol, setActive]
       );
       await client.query('COMMIT');

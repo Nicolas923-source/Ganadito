@@ -81,7 +81,8 @@ export const trazabilidadRoutes: FastifyPluginAsync<TrazabilidadRoutesOptions> =
           session.userId,
           session.activeOrganizationId,
           id,
-          request.body
+          request.body,
+          session.activeRole
         );
 
         return reply.status(201).send(evento);
@@ -109,11 +110,17 @@ export const trazabilidadRoutes: FastifyPluginAsync<TrazabilidadRoutesOptions> =
    */
   fastify.get<{ Params: { id: string } }>(
     '/bovinos/:id/pasaporte',
+    {
+      // Público para el QR; si llega token se valida y la organización propietaria ve la vista completa.
+      preHandler: [async (request, reply) => {
+        if (request.headers.authorization) return authenticate(request, reply);
+      }]
+    },
     async (request, reply) => {
       const { id } = request.params;
 
       try {
-        const pasaporte = await trazabilidadService.obtenerPasaporte(id);
+        const pasaporte = await trazabilidadService.obtenerPasaporte(id, request.userSession?.activeOrganizationId);
         return reply.status(200).send(pasaporte);
       } catch (err: any) {
         if (err instanceof TrazabilidadError) {

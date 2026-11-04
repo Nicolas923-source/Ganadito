@@ -259,7 +259,7 @@ describe('Procesador Transactional Outbox y Difusión WebSocket en Tiempo Real',
     const compradorToken = cLogin.json().access_token;
 
     // 3. Conectar cliente WebSocket al canal de la subasta (/api/v1/subastas/:id/live)
-    const wsUrl = `ws://${serverHost}:${serverPort}/api/v1/subastas/${loteId}/live`;
+    const wsUrl = `ws://${serverHost}:${serverPort}/api/v1/subastas/${loteId}/live?access_token=${encodeURIComponent(compradorToken)}`;
     const clientWs = new WebSocket(wsUrl);
 
     await new Promise<void>((resolve, reject) => {
@@ -267,7 +267,10 @@ describe('Procesador Transactional Outbox y Difusión WebSocket en Tiempo Real',
       clientWs.once('error', reject);
     });
 
-    // Validar que el hub reconozca al cliente conectado
+    // El servidor valida token y lote antes de suscribir: esperar el registro en el hub.
+    for (let i = 0; i < 100 && wsHub.getActiveSubscribersCount(loteId) === 0; i++) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
     assert.strictEqual(wsHub.getActiveSubscribersCount(loteId), 1, 'Debe haber 1 suscriptor activo en el canal');
 
     // Preparar promesa para recibir el mensaje en tiempo real por el WebSocket
@@ -309,10 +312,13 @@ describe('Procesador Transactional Outbox y Difusión WebSocket en Tiempo Real',
 
     // 6. El cliente WebSocket debe recibir la notificación reenviada desde Redis Pub/Sub
     const mensajeRecibido = await mensajeWsPromise;
+    // Formato único del contrato v1: { event_type, lote_id, data }
+    assert.strictEqual(mensajeRecibido.event_type, 'PUJA_ACEPTADA');
     assert.strictEqual(mensajeRecibido.lote_id, loteId);
-    assert.strictEqual(mensajeRecibido.monto, 2150);
-    assert.strictEqual(mensajeRecibido.secuencia, 1);
-    assert.strictEqual(mensajeRecibido.nuevo_precio_actual, 2150);
+    assert.strictEqual(mensajeRecibido.data.monto, 2150);
+    assert.strictEqual(mensajeRecibido.data.secuencia, 1);
+    assert.strictEqual(mensajeRecibido.data.nuevo_precio_actual, 2150);
+    assert.ok(!('idempotency_key' in mensajeRecibido.data));
 
     // 7. Desconectar cliente y comprobar la limpieza ordenada de recursos
     clientWs.close();
@@ -322,6 +328,42 @@ describe('Procesador Transactional Outbox y Difusión WebSocket en Tiempo Real',
       wsHub.getActiveSubscribersCount(loteId),
       0,
       'Tras desconexión, el conteo de suscriptores para el lote debe volver a 0'
+    );
+  });
+
+  test('5. Bucle continuo de OutboxWorker con scheduleNext y detención limpia con stop()', async () => {
+    let tickCount = 0;
+    const worker = new OutboxWorker({
+      pool,
+      publisher: redisPublisher,
+      pollIntervalMs: 80,
+      workerId: 'loop-test-worker'
+    });
+
+    const originalTick = worker.tick.bind(worker);
+    worker.tick = async () => {
+      tickCount++;
+      return originalTick();
+    };
+
+    worker.start();
+    assert.strictEqual(worker.isRunning, true, 'El worker debe reportar isRunning = true tras start()');
+
+    // Esperar 300 ms para verificar que ejecute al menos 2 ticks
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.ok(tickCount >= 2, `Debe haber ejecutado al menos 2 ticks en 300 ms (ejecutados: ${tickCount})`);
+
+    // Detener el worker ordenadamente
+    await worker.stop();
+    assert.strictEqual(worker.isRunning, false, 'El worker debe reportar isRunning = false tras stop()');
+
+    const ticksAtStop = tickCount;
+    // Esperar 200 ms adicionales para comprobar que el worker no vuelve a ejecutar ningún tick
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    assert.strictEqual(
+      tickCount,
+      ticksAtStop,
+      `No deben ejecutarse más ticks tras stop() (inicial: ${ticksAtStop}, posterior: ${tickCount})`
     );
   });
 });

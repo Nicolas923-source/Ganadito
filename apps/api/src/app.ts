@@ -10,6 +10,7 @@ import { spotRoutes } from './spot/spot.routes.js';
 import { subastasRoutes } from './subastas/subastas.routes.js';
 import { subastasWsRoutes, SubastaWsHub } from './subastas/subastas.ws.js';
 import { pagosRoutes } from './pagos/pagos.routes.js';
+import type { PagosConfig } from './pagos/pagos.service.js';
 import { ordenesRoutes } from './subastas/ordenes.routes.js';
 import { trazabilidadRoutes } from './trazabilidad/trazabilidad.routes.js';
 import { mayoristaRoutes } from './mayorista/mayorista.routes.js';
@@ -20,7 +21,7 @@ import { AiClientService } from './integraciones/ai-client.service.js';
 import { taxRoutes } from './integraciones/tax.routes.js';
 import { SunatAdapter } from './integraciones/sunat.adapter.js';
 import { CavaliAdapter } from './integraciones/cavali.adapter.js';
-import { getHealthStatus } from './index.js';
+import { checkHealth } from './health.js';
 
 export interface AppOptions {
   pool?: pg.Pool;
@@ -32,6 +33,27 @@ export interface AppOptions {
   aiServiceUrl?: string;
   sunatAdapter?: SunatAdapter;
   cavaliAdapter?: CavaliAdapter;
+  /** Overrides de configuración de pagos (por defecto se leen de PAYMENTS_* / WEBHOOK_SECRET). */
+  pagos?: Partial<PagosConfig>;
+}
+
+const DEV_JWT_SECRET = 'ganadito_local_dev_only_jwt_secret_32_chars_min';
+export const MIN_JWT_SECRET_LENGTH = 32;
+
+/**
+ * En producción JWT_SECRET es obligatorio (≥32 caracteres): sin él cualquiera podría
+ * firmar tokens con el valor de desarrollo publicado en el repositorio.
+ */
+export function resolveJwtSecret(override?: string): string {
+  const secret = override ?? process.env.JWT_SECRET;
+  if (secret && secret.length >= MIN_JWT_SECRET_LENGTH) return secret;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(`JWT_SECRET es obligatorio en producción (mínimo ${MIN_JWT_SECRET_LENGTH} caracteres).`);
+  }
+  if (secret) {
+    throw new Error(`JWT_SECRET debe tener al menos ${MIN_JWT_SECRET_LENGTH} caracteres.`);
+  }
+  return DEV_JWT_SECRET;
 }
 
 export function buildApp(options: AppOptions = {}): FastifyInstance {
@@ -40,10 +62,7 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
   });
 
   const pool = options.pool ?? getPool();
-  const jwtSecret =
-    options.jwtSecret ??
-    process.env.JWT_SECRET ??
-    'ganadito_super_secret_local_dev_key_32_chars_min';
+  const jwtSecret = resolveJwtSecret(options.jwtSecret);
 
   // Preservar rawBody para validación criptográfica de firmas HMAC
   app.addContentTypeParser(
@@ -73,8 +92,9 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
   });
 
   // Ruta base de Health Check
-  app.get('/health', async () => {
-    return getHealthStatus();
+  app.get('/health', async (_request, reply) => {
+    const report = await checkHealth(pool);
+    return reply.status(report.db === 'ok' ? 200 : 503).send(report);
   });
 
   // Registrar rutas de autenticación y RBAC dual
@@ -105,13 +125,15 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
   app.register(subastasWsRoutes, {
     prefix: '/api/v1',
     subscriber: options.redisSubscriber,
-    hub: options.wsHub
+    hub: options.wsHub,
+    pool
   });
 
   // Registrar módulo financiero de pagos y webhooks de pasarelas
   app.register(pagosRoutes, {
     prefix: '/api/v1/pagos',
-    pool
+    pool,
+    config: options.pagos
   });
 
   // Registrar ciclo de entrega y liquidaciones de órdenes de compra

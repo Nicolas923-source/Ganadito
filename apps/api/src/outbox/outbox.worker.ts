@@ -1,4 +1,5 @@
 import type pg from 'pg';
+import { proyectarEventoPublico } from './eventos-publicos.js';
 import type { OutboxEventRecord, OutboxBatchResult, RedisPublisherLike } from './outbox.types.js';
 
 export interface OutboxWorkerOptions {
@@ -56,24 +57,16 @@ export async function procesarLoteOutbox(
   // 2. Procesar cada evento adquirido individualmente
   for (const evento of eventos) {
     try {
-      // Determinar canal y payload según el tipo de evento
-      if (evento.event_type === 'PUJA_ACEPTADA') {
-        const canal = `subasta:events:${evento.aggregate_id}`;
-        const mensaje =
-          typeof evento.payload === 'string'
-            ? evento.payload
-            : JSON.stringify(evento.payload);
-
-        await redisPublisher.publish(canal, mensaje);
-      } else {
-        // Soporte para eventos genéricos o futuros de subastas
-        const canal = `subasta:events:${evento.aggregate_id}`;
-        const mensaje =
-          typeof evento.payload === 'string'
-            ? evento.payload
-            : JSON.stringify(evento.payload);
-
-        await redisPublisher.publish(canal, mensaje);
+      // Publicar solo la proyección pública del evento (contrato v1: {event_type, lote_id, data}).
+      // Los eventos internos (p. ej. ORDEN_PAGADA) se marcan procesados sin salir a la sala.
+      const publico = proyectarEventoPublico(
+        evento.aggregate_type,
+        evento.aggregate_id,
+        evento.event_type,
+        evento.payload
+      );
+      if (publico) {
+        await redisPublisher.publish(publico.canal, JSON.stringify(publico.mensaje));
       }
 
       // 3. Confirmar procesamiento exitoso verificando fencing_token (protección contra lease robado)
@@ -187,43 +180,49 @@ export class OutboxWorker {
     if (this.active) return;
     this.active = true;
 
-    const poll = async () => {
-      if (!this.active) return;
-      if (this.inFlight) {
-        this.scheduleNext();
-        return;
-      }
-
-      this.inFlight = true;
-      try {
-        const res = await this.tick();
-        if (this.logger && res.totalLeidos > 0) {
-          console.log(
-            `[OutboxWorker ${this.workerId}] Procesados: ${res.procesados}, Fallidos: ${res.fallidos}, DLQ: ${res.dlq}, Fenced: ${res.fenced}`
-          );
-        }
-      } catch (err) {
-        if (this.logger) {
-          console.error(`[OutboxWorker ${this.workerId}] Error al procesar lote:`, err);
-        }
-      } finally {
-        this.inFlight = false;
-        if (this.active) {
-          this.scheduleNext();
-        }
-      }
-    };
-
     // Primer sondeo inmediato
-    setImmediate(poll);
+    setImmediate(() => {
+      void this.poll();
+    });
+  }
+
+  private async poll(): Promise<void> {
+    if (!this.active) return;
+    if (this.inFlight) {
+      this.scheduleNext();
+      return;
+    }
+
+    this.inFlight = true;
+    try {
+      const res = await this.tick();
+      if (this.logger && res.totalLeidos > 0) {
+        console.log(
+          `[OutboxWorker ${this.workerId}] Procesados: ${res.procesados}, Fallidos: ${res.fallidos}, DLQ: ${res.dlq}, Fenced: ${res.fenced}`
+        );
+      }
+    } catch (err) {
+      if (this.logger) {
+        console.error(`[OutboxWorker ${this.workerId}] Error al procesar lote:`, err);
+      }
+    } finally {
+      this.inFlight = false;
+      if (this.active) {
+        this.scheduleNext();
+      }
+    }
   }
 
   private scheduleNext(): void {
     if (!this.active) return;
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
     this.timer = setTimeout(() => {
       this.timer = null;
       if (this.active) {
-        this.start();
+        void this.poll();
       }
     }, this.pollIntervalMs);
   }
@@ -236,6 +235,9 @@ export class OutboxWorker {
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
+    }
+    while (this.inFlight) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
     }
   }
 

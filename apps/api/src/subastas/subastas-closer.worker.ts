@@ -41,55 +41,57 @@ export class SubastasCloserWorker {
   start(): void {
     if (this.active) return;
     this.active = true;
-
-    const poll = async () => {
-      if (!this.active) return;
-      if (this.inFlight) {
-        this.scheduleNext();
-        return;
-      }
-
-      this.inFlight = true;
-      try {
-        const res = await this.tick();
-        if (this.logger && (res.adjudicados > 0 || res.desiertos > 0)) {
-          console.log(
-            `[SubastasCloserWorker] Evaluados: ${res.totalEvaluados}, Adjudicados: ${res.adjudicados}, Desiertos: ${res.desiertos}, Órdenes: ${res.ordenesGeneradas}`
-          );
-        }
-      } catch (err) {
-        if (this.logger) {
-          console.error('[SubastasCloserWorker] Error durante ciclo de liquidación:', err);
-        }
-      } finally {
-        this.inFlight = false;
-        if (this.active) {
-          this.scheduleNext();
-        }
-      }
-    };
-
-    setImmediate(poll);
+    setImmediate(() => {
+      void this.poll();
+    });
   }
 
+  private async poll(): Promise<void> {
+    if (!this.active) return;
+    if (this.inFlight) {
+      this.scheduleNext();
+      return;
+    }
+
+    this.inFlight = true;
+    try {
+      const res = await this.tick();
+      if (this.logger && (res.adjudicados > 0 || res.desiertos > 0)) {
+        console.log(
+          `[SubastasCloserWorker] Evaluados: ${res.totalEvaluados}, Adjudicados: ${res.adjudicados}, Desiertos: ${res.desiertos}, Órdenes: ${res.ordenesGeneradas}`
+        );
+      }
+    } catch (err) {
+      if (this.logger) {
+        console.error('[SubastasCloserWorker] Error durante ciclo de liquidación:', err);
+      }
+    } finally {
+      this.inFlight = false;
+      if (this.active) {
+        this.scheduleNext();
+      }
+    }
+  }
+
+  // Antes llamaba a start(), que salía de inmediato por `active === true`: el worker
+  // sólo ejecutaba un ciclo y los lotes vencidos después nunca se cerraban.
   private scheduleNext(): void {
     if (!this.active) return;
+    if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(() => {
       this.timer = null;
-      if (this.active) {
-        this.start();
-      }
+      void this.poll();
     }, this.intervalMs);
   }
 
-  /**
-   * Detiene el worker ordenadamente.
-   */
   async stop(): Promise<void> {
     this.active = false;
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
+    }
+    while (this.inFlight) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
     }
   }
 
