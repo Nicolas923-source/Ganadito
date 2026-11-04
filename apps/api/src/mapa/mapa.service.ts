@@ -1,4 +1,5 @@
 import type pg from 'pg';
+import { REJILLA_UBICACION_GRADOS, sqlUbicacionAproximada } from './ubicacion-publica.js';
 import type {
   CrearEstablecimientoInput,
   EstablecimientoResponse,
@@ -121,7 +122,7 @@ export class MapaService {
     const res = await this.pool.query<EstablecimientoResponse & { ubicacion_aproximada: boolean }>(
       `WITH candidatos AS (
          SELECT e.*,
-                (e.tipo = 'ESTABLO' AND e.organizacion_id IS DISTINCT FROM $7::uuid) AS aprox
+                ${sqlUbicacionAproximada('e', '$7')} AS aprox
          FROM establecimientos e
          WHERE ST_DWithin(e.coordenadas, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, $3 + 2000)
            AND e.activo = TRUE
@@ -130,7 +131,7 @@ export class MapaService {
        posicionados AS (
          SELECT c.*,
                 CASE WHEN c.aprox
-                     THEN ST_SnapToGrid(c.coordenadas::geometry, 0.01)::geography
+                     THEN ST_SnapToGrid(c.coordenadas::geometry, ${REJILLA_UBICACION_GRADOS})::geography
                      ELSE c.coordenadas END AS pos
          FROM candidatos c
        )
