@@ -3,6 +3,7 @@ Ganadito AI Satellite Service (Python 3.11+ / FastAPI / OpenCV / NumPy)
 - ExpoGanadito Video Pipeline (/api/v1/vision/analizar-video)
 - Dr. Ganadito Bromatología CIELAB (/api/v1/bromatologia/analizar-color)
 - Checklist Sanitario RM N.° 822-2018/MINSA (/api/v1/bromatologia/checklist-minsa)
+- Estimación orientativa de peso vivo por zoometría (/api/v1/peso/estimar)
 """
 
 from __future__ import annotations
@@ -16,6 +17,14 @@ import cv2
 import numpy as np
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
+
+from peso import (
+    EstimacionPesoError,
+    EstimacionPesoInput,
+    EstimacionPesoResult,
+    ImagenDemasiadoGrandeError,
+    estimar_peso,
+)
 
 app = FastAPI(
     title="Ganadito AI Satellite Service",
@@ -404,6 +413,21 @@ async def endpoint_analizar_color(
         status_code=400,
         detail="Debe proporcionar 'imagen_base64', 'bgr_color' o un archivo de imagen.",
     )
+
+
+@app.post("/api/v1/peso/estimar", response_model=EstimacionPesoResult)
+async def endpoint_estimar_peso(payload: EstimacionPesoInput) -> EstimacionPesoResult:
+    """
+    Estimación ORIENTATIVA del peso vivo a partir de un fotograma de perfil, 4 puntos
+    anatómicos y una calibración (marcador ArUco o referencia de longitud conocida).
+    No es un pesaje ni es vinculante: no debe usarse para liquidar por kilogramo.
+    """
+    try:
+        return estimar_peso(payload)
+    except ImagenDemasiadoGrandeError as err:
+        raise HTTPException(status_code=413, detail=str(err)) from err
+    except EstimacionPesoError as err:
+        raise HTTPException(status_code=422, detail=str(err)) from err
 
 
 @app.post("/api/v1/bromatologia/checklist-minsa", response_model=ChecklistMinsaResult)
