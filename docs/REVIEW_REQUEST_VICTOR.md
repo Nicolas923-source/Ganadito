@@ -26,7 +26,7 @@ Validación del conjunto final: instalación reproducible, typecheck, build, 3 p
 
 ## Publicación
 
-La conexión GitHub permitió leer código, PR y reglas de `main`, pero devolvió `403 Resource not accessible by integration` al intentar crear la rama. Las ramas y commits locales quedan preparados sin cambiar permisos ni eludir las reglas. Publicar requiere una conexión con escritura sobre este repositorio.
+La conexión GitHub permitió leer código, PR y reglas de `main`, pero devolvió `403 Resource not accessible by integration` al intentar crear la rama. También se intentó publicar mediante Git sin interacción: no hay credenciales locales disponibles. Las ramas y commits locales quedan preparados sin cambiar permisos ni eludir las reglas. Publicar requiere una conexión con escritura sobre este repositorio o autenticación humana de Git.
 
 ```powershell
 git push -u origin feature/victor/dependencias-web
@@ -34,3 +34,5 @@ git push -u origin feature/victor/v01-v06-interfaz
 ```
 
 Abrir ambos PR como borradores y solicitar revisión cruzada de Nicolás. No aprobar la propia entrega ni activar producción.
+
+Una copia transferible se genera en `tmp/handoff/Ganadito_Victor.bundle` con las dos ramas y el historial necesario. Puede inspeccionarse con `git bundle verify <archivo>` y usarse como origen de `git fetch` en otro clon. No contiene `.env`, credenciales, `node_modules` ni artefactos de navegador. Los PR aún no existen y la CI remota aún no se ha ejecutado.
