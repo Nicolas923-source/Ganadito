@@ -66,6 +66,41 @@ test('the requested lot loads its official snapshot without demo substitutions',
   await expect(page.getByRole('button', { name: 'Confirmar puja' })).toBeDisabled();
 });
 
+for (const revisit of [false, true]) test(`a late bid receipt from a disposed panel is ignored${revisit ? ' after returning to its lot' : ' in another lot'}`, async ({ page }) => {
+  await installSession(page);
+  const nextLot = 'ca5f2fd1-4761-4d64-a20a-b7ae89199b6c';
+  let pending: import('@playwright/test').Route | undefined;
+  await page.route(`**/api/v1/subastas/${lotId}/pujas`, route => { pending = route; });
+  await page.route(`**/api/v1/subastas/${nextLot}/snapshot`, route => route.fulfill({ json: snapshot({ id: nextLot, codigo_lote: 'OTRO-LOTE', precio_actual: 500, precio_base: 500, proxima_puja_minima: 510 }) }));
+  await page.routeWebSocket(`**/api/v1/subastas/${nextLot}/live?*`, () => {});
+  await room(page, () => snapshot());
+  await expect(page.getByRole('button', { name: 'Confirmar puja', exact: true })).toBeEnabled();
+  await page.getByLabel('Importe de tu puja (S/)').fill('110');
+  await page.getByRole('button', { name: 'Confirmar puja', exact: true }).click();
+  await expect.poll(() => !!pending).toBe(true);
+  // Client-side navigation reuses the route component; a full reload hides this race.
+  await page.evaluate(path => {
+    const link = document.createElement('a'); link.href = path; link.textContent = 'Otro lote';
+    document.body.append(link); link.click();
+  }, `/subastas/${nextLot}`);
+  await expect(page.getByRole('heading', { name: 'OTRO-LOTE', exact: true })).toBeVisible();
+  if (revisit) {
+    await page.evaluate(path => {
+      const link = document.createElement('a'); link.href = path; link.textContent = 'Regresar al lote';
+      document.body.append(link); link.click();
+    }, `/subastas/${lotId}`);
+    await expect(page.getByRole('heading', { name: 'LOTE-PRUEBA-101', exact: true })).toBeVisible();
+  }
+  const key = pending!.request().headers()['idempotency-key'];
+  const delivered = page.waitForResponse(response => response.url().endsWith(`/${lotId}/pujas`));
+  await pending!.fulfill({ status: 201, json: { ...liveBid(1).data, lote_id: lotId, idempotency_key: key } });
+  // Flush receipt delivery and the component's completion callback before asserting.
+  expect(await (await delivered).finished()).toBeNull();
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await expect(page.getByText('Secuencia 1', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: revisit ? 'LOTE-PRUEBA-101' : 'OTRO-LOTE', exact: true })).toBeVisible();
+});
+
 test('missing and incomplete lots expose errors and never display a sample lot', async ({ page }) => {
   await page.route('**/api/v1/subastas/missing/snapshot', route => route.fulfill({ status: 404, json: { message: 'Lote no encontrado.' } }));
   await page.routeWebSocket('**/api/v1/subastas/*/live', () => {});

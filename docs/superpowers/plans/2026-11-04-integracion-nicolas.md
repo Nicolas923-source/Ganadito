@@ -85,3 +85,13 @@ Alcance: `README.md`, `docs/GIT_WORKFLOW.md`, `docs/DEVELOPMENT.md`, este plan y
 - [x] Reproducir en memoria y comunicar el efecto de migraciones antes de validar configuración en #30.
 - [x] Actualizar README y diagnóstico con arranque/órdenes ya implementados; registrar orden, SHA y aprobación humana.
 - [x] Verificar referencias y comandos documentados (25 enlaces locales y 30 referencias a scripts), pasar las 36 pruebas de configuración y preparar el seguimiento para #37. La publicación y CI final quedan registradas en el PR.
+
+## Seguimiento: aprobación delegada y ciclo de vida de pujas
+
+Decisión posterior del propietario: Codex puede registrar aprobaciones de los PR correctos de Nicolás ya revisados y comprobados; conserva la prohibición de aprobar cambios propios o con bloqueantes. No se autorizaron fusiones. #27 ya estaba aprobado; #25 y #28 se aprobaron sobre sus mismos SHA con CI exacta verde. #31 mantiene dependencia bloqueada y falta de CI individual.
+
+Tarea V03/V04, editor Víctor: `PanelPujaRapida.svelte` y `tests/e2e/auctions.spec.ts`; no cambia API ni contratos. Al enviar puja en A, navegar a B y regresar a A antes de recibir la respuesta, la instancia destruida del panel podía añadir una puja al historial de la nueva visita. Una respuesta tardía de una instancia destruida debe descartarse sin cambiar las decisiones persistidas de la API.
+
+- [x] Reproducir rojo A→B→A (historial esperaba 0 filas y recibió 1); A→B sin retorno ya era correcto.
+- [x] Añadir guardia de destrucción del panel en éxito/error/finalización; ambas regresiones verdes.
+- [x] Revisión independiente correcta; typecheck/build, 5 unitarios, 2 proxy, 58 fixtures y 2 HTTP correctos. Preparar publicación en #37; su evidencia enlaza la CI del HEAD final.

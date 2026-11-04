@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import { apiRequest, ApiError } from '#lib/api.ts';
   import { session } from '#lib/session.ts';
   import { bidAttempt, parseBidReceipt, type BidAttempt, type AcceptedBid } from '#lib/auctions/state.ts';
@@ -18,6 +19,8 @@
   let confirmation = $state('');
   let pending = $state<BidAttempt | null>(null);
   let uncertain = $state(false);
+  let disposed = false;
+  onDestroy(() => { disposed = true; });
   const sessionKey = $derived(`${$session.token ?? ''}:${$session.organizationId ?? ''}:${$session.role ?? ''}`);
   const hasSession = $derived($session.status === 'authenticated' && !!$session.organizationId);
   const canBid = $derived(hasSession && esAbierta);
@@ -52,7 +55,7 @@
         headers: { 'Idempotency-Key': attempt.key },
         body: JSON.stringify({ monto: attempt.amount, idempotency_key: attempt.key })
       });
-      if (sessionKey !== attempt.sessionKey || subastaId !== attempt.lotId) return;
+      if (disposed || sessionKey !== attempt.sessionKey || subastaId !== attempt.lotId) return;
       const receipt = parseBidReceipt(response, attempt.lotId);
       if (receipt.idempotency_key !== attempt.key || receipt.monto !== attempt.amount) {
         throw new Error('No se pudo verificar la confirmación de la puja.');
@@ -62,7 +65,7 @@
       amount = undefined;
       onPujaExitosa?.(receipt);
     } catch (cause) {
-      if (sessionKey !== attempt.sessionKey || subastaId !== attempt.lotId) return;
+      if (disposed || sessionKey !== attempt.sessionKey || subastaId !== attempt.lotId) return;
       error = cause instanceof Error ? cause.message : 'No se pudo enviar la puja.';
       const processing = cause instanceof ApiError && cause.status === 409 && cause.data !== null
         && typeof cause.data === 'object' && 'code' in cause.data && cause.data.code === 'IDEMPOTENCY_IN_PROGRESS';
@@ -70,7 +73,7 @@
       uncertain = !definitive;
       if (definitive) pending = null;
     } finally {
-      submitting = false;
+      if (!disposed) submitting = false;
     }
   }
 </script>

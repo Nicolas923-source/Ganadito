@@ -2,6 +2,14 @@
 
 Base: `Nicolas923-source/Ganadito`, commit `dde293bc977ac090d631b6c90a2cb4bb6efcb40e`. Validación inicial del 3 de noviembre de 2026 y repetición completa el 4 de noviembre de 2026 (America/Bogota).
 
+## Seguimiento: instancia destruida y aprobación delegada
+
+El propietario autorizó posteriormente que Codex registre aprobaciones de cambios de Nicolás revisados y comprobados. #27 ya estaba aprobado personalmente; #25 y #28 se aprobaron por delegación en los mismos SHA con CI exacta verde. #31 continúa sin aprobar por sus dependencias y falta de CI individual. Los PR con defectos y los propios de Víctor permanecen sin aprobación automática ni fusión.
+
+Se reprodujo un defecto V03/V04: enviar una puja en A, navegar a B y regresar a A antes del recibo HTTP permitía que una instancia destruida del panel añadiera una puja al historial de la nueva visita. La regresión falló con una fila inesperada; navegar A→B sin regresar ya era correcto. La guardia `onDestroy` ahora descarta resultados tardíos de instancias destruidas sin cambiar decisiones de la API ni reintentos de un panel activo.
+
+Checks locales del cambio: typecheck completo (web sin errores/advertencias), build completo, 5/5 unitarios web, 2/2 proxy compilado, 58/58 navegador con fixtures y 2/2 modo HTTP. Las dos regresiones esperan la entrega completa del recibo y navegación SPA. Revisión independiente sin bloqueantes; `git diff --check` correcto. La CI del HEAD publicado y el recorrido real se enlazan en [#37](https://github.com/Nicolas923-source/Ganadito/pull/37). No se probaron servicios reales contra PostgreSQL local existente ni Neon.
+
 ## Integración posterior con N01–N05 — 4 de noviembre de 2026
 
 Contrato #29 integrado en `2ffe7d4`; baseline original de Nicolás `26e8179` (N05 y dependencias), reunido con #35/#36 en la rama aislada `feature/victor/v04-v06-integracion-nicolas`. Esto no fusiona los PR de código en main ni acredita resolución de los [hallazgos](REVIEW_NICOLAS_2026-11-04.md).

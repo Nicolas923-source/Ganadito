@@ -61,7 +61,7 @@ Ejecutar checks pertinentes con los servicios de prueba requeridos; registrar fa
 
 Nadie aprueba su entrega. No editar la rama del compañero mientras trabaja. La revisión automática o de un asistente no sustituye la revisión cruzada. Un e2e con fixtures no demuestra integración API real.
 
-Las guías entregadas por Víctor el 4 de noviembre de 2026 exigen que el botón **Approve** lo pulse la persona revisora. El asistente publica un dictamen técnico mediante `COMMENT` o solicita cambios concretos; un `COMMENT` favorable no cuenta como aprobación formal. No duplicar commits de Nicolás que ya estén heredados por otra rama.
+Las guías iniciales entregadas por Víctor el 4 de noviembre de 2026 reservaban **Approve** a la persona revisora. Después, el propietario autorizó expresamente en este chat que Codex registre aprobaciones de cambios de Nicolás ya revisados y comprobados, para ahorrar tiempo. Esa decisión posterior tiene prioridad sobre la guía: se fija el SHA, se comprueban diff, pruebas y CI exacta y se conserva el alcance de la revisión. Un `COMMENT` favorable no cuenta como aprobación formal. No aprobar PR propios ni dependencias bloqueadas; una CI verde no acredita funcionamiento universal. Esta delegación no autoriza fusionar PR ni desplegar. No duplicar commits heredados por otra rama.
 
 ## Integrar uno por uno
 
