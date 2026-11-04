@@ -36,28 +36,35 @@ export function createAuthMiddleware(pool: pg.Pool) {
 
       const user = userRes.rows[0]!;
 
-      // 3. Si el token incluye active_organization_id, comprobar en PostgreSQL que la membresía esté activa
+      // 3. Validar en PostgreSQL la membresía EXACTA del token (organización + rol).
+      //    Antes se filtraba solo por organización y se tomaba rows[0]: con varios roles en la
+      //    misma organización el resultado dependía del orden de las filas.
       let activeOrgName: string | undefined;
-      let activeRole: RolOrganizacion | undefined = decoded.active_role;
+      let activeRole: RolOrganizacion | undefined;
 
       if (decoded.active_organization_id) {
-        const membershipRes = await pool.query<{
-          rol: RolOrganizacion;
-          razon_social: string;
-          is_active_context: boolean;
-        }>(
-          `SELECT uor.rol, o.razon_social, uor.is_active_context
+        if (!decoded.active_role) {
+          return reply.status(401).send({
+            statusCode: 401,
+            error: 'Unauthorized',
+            message: 'El token no incluye el rol del contexto activo.'
+          });
+        }
+
+        const membershipRes = await pool.query<{ razon_social: string; is_active_context: boolean }>(
+          `SELECT o.razon_social, uor.is_active_context
            FROM user_organizaciones_roles uor
            JOIN organizaciones o ON o.id = uor.organizacion_id
-           WHERE uor.user_id = $1 AND uor.organizacion_id = $2`,
-          [decoded.user_id, decoded.active_organization_id]
+           WHERE uor.user_id = $1 AND uor.organizacion_id = $2 AND uor.rol = $3`,
+          [decoded.user_id, decoded.active_organization_id, decoded.active_role]
         );
 
         if (membershipRes.rows.length === 0) {
           return reply.status(403).send({
             statusCode: 403,
             error: 'Forbidden',
-            message: 'El usuario no pertenece a la organización especificada en la sesión.'
+            code: 'SIN_MEMBRESIA',
+            message: 'El usuario no posee esa membresía (organización y rol) en la sesión.'
           });
         }
 
@@ -66,12 +73,13 @@ export function createAuthMiddleware(pool: pg.Pool) {
           return reply.status(403).send({
             statusCode: 403,
             error: 'Forbidden',
-            message: 'El contexto de esta organización ya no está activo. Conmute su contexto activo.'
+            code: 'CONTEXTO_INACTIVO',
+            message: 'El contexto de esta sesión ya no está activo. Conmute su contexto activo.'
           });
         }
 
         activeOrgName = currentMembership.razon_social;
-        activeRole = currentMembership.rol;
+        activeRole = decoded.active_role;
       }
 
       // 4. Inyectar sesión autenticada en el request

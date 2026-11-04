@@ -285,7 +285,7 @@ export class AuthService {
         `INSERT INTO user_organizaciones_roles (user_id, organizacion_id, rol, is_active_context)
          VALUES ($1, $2, $3, $4)
          ON CONFLICT (user_id, organizacion_id, rol)
-         DO UPDATE SET is_active_context = EXCLUDED.is_active_context`,
+         DO UPDATE SET is_active_context = user_organizaciones_roles.is_active_context OR EXCLUDED.is_active_context`,
         [userId, orgId, rol, setActive]
       );
       await client.query('COMMIT');

@@ -130,7 +130,10 @@ export class SunatAdapter {
    * Genera y despacha una Liquidación de Compra Electrónica (SEE-SUNAT)
    * vinculada a una orden de compra liquidada y a un productor agropecuario con DNI.
    */
-  async emitirLiquidacionCompra(input: LiquidacionCompraInput): Promise<EmisionComprobanteResponse> {
+  async emitirLiquidacionCompra(
+    input: LiquidacionCompraInput,
+    organizacionSesionId: string
+  ): Promise<EmisionComprobanteResponse> {
     if (!input.orden_compra_id) {
       throw new SunatError('orden_compra_id es obligatorio.', 400);
     }
@@ -149,12 +152,14 @@ export class SunatAdapter {
       await client.query('BEGIN');
 
       // 1. Validar orden de compra y exigir que se encuentre en estado 'LIQUIDADO'
+      // La liquidación de compra la emite el comprador: la orden debe pertenecer a la
+      // organización activa como compradora. Si no, se responde 404 (no revelar existencia).
       const ordenRes = await client.query<{ id: string; estado: string; total_a_pagar: string }>(
         `SELECT id, estado, total_a_pagar
          FROM ordenes_compra
-         WHERE id = $1
+         WHERE id = $1 AND organizacion_compradora_id = $2
          FOR UPDATE;`,
-        [input.orden_compra_id]
+        [input.orden_compra_id, organizacionSesionId]
       );
 
       if (ordenRes.rows.length === 0) {
@@ -415,8 +420,13 @@ export class SunatAdapter {
   /**
    * Obtiene un comprobante tributario por su ID.
    */
-  async obtenerComprobantePorId(id: string): Promise<ComprobanteFiscalRecord> {
-    const res = await this.pool.query('SELECT * FROM comprobantes_tributarios WHERE id = $1;', [id]);
+  async obtenerComprobantePorId(id: string, organizacionId: string): Promise<ComprobanteFiscalRecord> {
+    const res = await this.pool.query(
+      `SELECT c.* FROM comprobantes_tributarios c
+       JOIN ordenes_compra o ON o.id = c.orden_id
+       WHERE c.id = $1 AND (o.organizacion_compradora_id = $2 OR o.organizacion_vendedora_id = $2);`,
+      [id, organizacionId]
+    );
     if (res.rows.length === 0) {
       throw new SunatError(`Comprobante ${id} no encontrado.`, 404);
     }
@@ -426,11 +436,14 @@ export class SunatAdapter {
   /**
    * Lista comprobantes tributarios ordenados cronológicamente descendente.
    */
-  async listarComprobantes(limit: number = 50): Promise<ComprobanteFiscalRecord[]> {
-    const safeLimit = Math.min(Math.max(1, limit), 100);
+  async listarComprobantes(organizacionId: string, limit: number = 50): Promise<ComprobanteFiscalRecord[]> {
+    const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(1, Math.trunc(limit)), 100) : 50;
     const res = await this.pool.query(
-      'SELECT * FROM comprobantes_tributarios ORDER BY created_at DESC LIMIT $1;',
-      [safeLimit]
+      `SELECT c.* FROM comprobantes_tributarios c
+       JOIN ordenes_compra o ON o.id = c.orden_id
+       WHERE o.organizacion_compradora_id = $1 OR o.organizacion_vendedora_id = $1
+       ORDER BY c.created_at DESC LIMIT $2;`,
+      [organizacionId, safeLimit]
     );
     return res.rows.map(mapComprobanteRow);
   }

@@ -3,6 +3,7 @@ import type pg from 'pg';
 import { SubastasService, SubastaError } from './subastas.service.js';
 import { SubastasCloserService } from './subastas-closer.service.js';
 import { createAuthMiddleware } from '../auth/auth.middleware.js';
+import { requireRole } from '../auth/authorize.js';
 import type { CrearLoteSubastaInput, EmitirPujaInput } from './subastas.types.js';
 
 export interface SubastasRoutesOptions {
@@ -21,7 +22,7 @@ export const subastasRoutes: FastifyPluginAsync<SubastasRoutesOptions> = async (
    */
   fastify.post<{ Body: CrearLoteSubastaInput }>(
     '/subastas',
-    { preHandler: [authenticate] },
+    { preHandler: [authenticate, requireRole('VENDEDOR')] },
     async (request, reply) => {
       const activeOrgId = request.userSession?.activeOrganizationId;
 
@@ -90,7 +91,7 @@ export const subastasRoutes: FastifyPluginAsync<SubastasRoutesOptions> = async (
    */
   fastify.post<{ Params: { id: string }; Body: EmitirPujaInput; Headers: { 'idempotency-key'?: string } }>(
     '/subastas/:id/pujas',
-    { preHandler: [authenticate] },
+    { preHandler: [authenticate, requireRole('COMPRADOR')] },
     async (request, reply) => {
       const { id } = request.params;
       const session = request.userSession!;
@@ -145,7 +146,7 @@ export const subastasRoutes: FastifyPluginAsync<SubastasRoutesOptions> = async (
    */
   fastify.post(
     '/subastas/cerrar-expiradas',
-    { preHandler: [authenticate] },
+    { preHandler: [authenticate, requireRole('ADMIN')] },
     async (request, reply) => {
       try {
         const resultado = await subastasCloserService.cerrarLotesExpirados();

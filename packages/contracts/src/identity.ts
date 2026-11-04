@@ -4,13 +4,16 @@ import type { PointGeoJSON, UbigeoPerunano } from './geo.js';
  * Roles organizacionales permitidos en la plataforma Ganadito.
  * Un usuario puede poseer distintos roles dentro de una o varias organizaciones (RBAC dual).
  */
+// Debe coincidir exactamente con el CHECK de user_organizaciones_roles.rol (migración 0001).
+// 'ADMINISTRADOR' no existía en la base de datos; el valor real es 'ADMIN'.
 export const ROLES_ORGANIZACION = [
   'COMPRADOR',
   'VENDEDOR',
-  'OPERADOR',
-  'ADMINISTRADOR',
+  'OPERADOR_CAMAL',
+  'TRANSPORTISTA',
+  'ADMIN',
   'AUDITOR',
-  'TRANSPORTISTA'
+  'OPERADOR'
 ] as const;
 
 export type RolOrganizacion = (typeof ROLES_ORGANIZACION)[number];

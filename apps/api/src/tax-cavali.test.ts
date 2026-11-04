@@ -2,6 +2,7 @@ import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { getPool, closePool, runInitialMigration } from './db.js';
 import { buildApp } from './app.js';
+import { crearUsuarioConRol } from './test-helpers.js';
 import { AuthService } from './auth/auth.service.js';
 import { SunatAdapter } from './integraciones/sunat.adapter.js';
 import { CavaliAdapter } from './integraciones/cavali.adapter.js';
@@ -260,10 +261,18 @@ describe('Adaptadores de Integración Tributaria (SEE-SUNAT) y Financiera (CAVAL
     // Restablecer la simulación de fallos para que la conciliación proceda con éxito
     sunatAdapter.setForceFailureSimulation(false);
 
-    const res = await app.inject({
+    let res = await app.inject({
       method: 'POST',
       url: '/api/v1/tributario/conciliar-pendientes',
       headers: { authorization: `Bearer ${compradorToken}` }
+    });
+    assert.strictEqual(res.statusCode, 403, 'Solo ADMIN concilia');
+
+    const admin = await crearUsuarioConRol(app, authService, 'ADMIN', 'tax');
+    res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/tributario/conciliar-pendientes',
+      headers: { authorization: `Bearer ${admin.token}` }
     });
 
     assert.strictEqual(res.statusCode, 200);

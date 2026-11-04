@@ -81,7 +81,8 @@ export const trazabilidadRoutes: FastifyPluginAsync<TrazabilidadRoutesOptions> =
           session.userId,
           session.activeOrganizationId,
           id,
-          request.body
+          request.body,
+          session.activeRole
         );
 
         return reply.status(201).send(evento);

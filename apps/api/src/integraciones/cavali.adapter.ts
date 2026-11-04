@@ -74,6 +74,11 @@ export class CavaliAdapter {
       await client.query('BEGIN');
 
       // 1. Validar que la orden exista y obtener su organización vendedora/acreedora
+      if (!organizacionSessionId) {
+        throw new CavaliError('Debe seleccionar una organización activa.', 403);
+      }
+
+      // Solo una de las partes de la orden puede solicitar factoring sobre ella.
       const ordenRes = await client.query<{
         id: string;
         organizacion_vendedora_id: string;
@@ -81,8 +86,8 @@ export class CavaliAdapter {
       }>(
         `SELECT id, organizacion_vendedora_id, estado
          FROM ordenes_compra
-         WHERE id = $1;`,
-        [input.orden_id]
+         WHERE id = $1 AND (organizacion_compradora_id = $2 OR organizacion_vendedora_id = $2);`,
+        [input.orden_id, organizacionSessionId]
       );
 
       if (ordenRes.rows.length === 0) {
@@ -90,7 +95,9 @@ export class CavaliAdapter {
       }
 
       const orden = ordenRes.rows[0]!;
-      const orgId = input.organizacion_id ?? organizacionSessionId ?? orden.organizacion_vendedora_id;
+      // La organización la determina la sesión; `input.organizacion_id` del cliente se ignora.
+      const orgId = organizacionSessionId;
+      void orden;
 
       // 2. Validar comprobante tributario
       const compRes = await client.query<{
@@ -197,8 +204,11 @@ export class CavaliAdapter {
   /**
    * Consulta una solicitud de factoring por ID.
    */
-  async obtenerFactoringPorId(id: string): Promise<FactoringCavaliRecord> {
-    const res = await this.pool.query('SELECT * FROM factoring_cavali_solicitudes WHERE id = $1;', [id]);
+  async obtenerFactoringPorId(id: string, organizacionId: string): Promise<FactoringCavaliRecord> {
+    const res = await this.pool.query(
+      'SELECT * FROM factoring_cavali_solicitudes WHERE id = $1 AND organizacion_id = $2;',
+      [id, organizacionId]
+    );
     if (res.rows.length === 0) {
       throw new CavaliError(`Solicitud de factoring ${id} no encontrada.`, 404);
     }
@@ -208,11 +218,11 @@ export class CavaliAdapter {
   /**
    * Lista solicitudes de factoring ordenadas cronológicamente descendente.
    */
-  async listarFactorings(limit: number = 50): Promise<FactoringCavaliRecord[]> {
-    const safeLimit = Math.min(Math.max(1, limit), 100);
+  async listarFactorings(organizacionId: string, limit: number = 50): Promise<FactoringCavaliRecord[]> {
+    const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(1, Math.trunc(limit)), 100) : 50;
     const res = await this.pool.query(
-      'SELECT * FROM factoring_cavali_solicitudes ORDER BY created_at DESC LIMIT $1;',
-      [safeLimit]
+      'SELECT * FROM factoring_cavali_solicitudes WHERE organizacion_id = $1 ORDER BY created_at DESC LIMIT $2;',
+      [organizacionId, safeLimit]
     );
     return res.rows.map(mapCavaliRow);
   }
