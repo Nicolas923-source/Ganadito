@@ -5,7 +5,7 @@
 - Variables de entorno (ver `.env.example`):
   - `DATABASE_URL` o `DATABASE_*`
   - `REDIS_URL` o `REDIS_*`
-  - `API_PORT` (por defecto 3000) y `API_HOST` (por defecto `0.0.0.0`)
+  - `API_PORT` (por defecto 4000, igual que `.env.example` y `PUBLIC_API_URL`) y `API_HOST` (por defecto `0.0.0.0`)
   - `JWT_SECRET`: **obligatorio en producción**, mínimo 32 caracteres. Fuera de producción, si falta, se usa un valor de desarrollo.
   - `RUN_MIGRATIONS_ON_START`: por defecto `true` fuera de producción y `false` en producción.
   - `START_WORKERS`: por defecto `true`.
@@ -17,7 +17,7 @@ npx tsx src/server.ts
 ```
 Comprobación:
 ```bash
-curl http://localhost:3000/health
+curl http://localhost:4000/health
 ```
 - `200`: `{ "status": "ok", "db": "ok", ... }`
 - `503`: la base de datos no responde.
