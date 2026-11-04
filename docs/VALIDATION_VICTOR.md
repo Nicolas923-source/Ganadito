@@ -10,6 +10,8 @@ No se cambiaron reglas de negocio ni contratos: se conserva el anti-sniping pred
 
 La auditoría de propiedad, nuevas revisiones de Nicolás y límites están en [SEGUIMIENTO_FOTO_2026-11-04.md](SEGUIMIENTO_FOTO_2026-11-04.md). La revisión cruzada de Nicolás y los hallazgos de backend pendientes siguen siendo necesarios para aceptar la entrega.
 
+Resultado posterior: [CI 41931985620](https://github.com/Nicolas923-source/Ganadito/actions/runs/41931985620) correcta en sus tres jobs, cabeza web `3a349f3` y merge de prueba `ca56977` con la nueva N05 `e657d77`. Backend 113/113, web 5/5, configuración 36/36, proxy 2/2, fixtures 58/58, HTTP 2/2 y recorrido real 1/1 (2.5 minutos). Este último ya publica, puja, recupera, cierra por worker y consulta la orden del mismo lote UI; también comprueba aislamiento API y navegador frente a organización ajena. Después se incorporó N05 original sin modificaciones; el HEAD final y su CI se fijan en #37. Las [recomendaciones](DECISIONES_PENDIENTES_FOTO_2026-11-04.md) se documentaron después de esta comprobación y siguen sin acuerdo.
+
 ## Seguimiento: instancia destruida y aprobación delegada
 
 El propietario autorizó posteriormente que Codex registre aprobaciones de cambios de Nicolás revisados y comprobados. #27 ya estaba aprobado personalmente; #25 y #28 se aprobaron por delegación en los mismos SHA con CI exacta verde. #31 continúa sin aprobar por sus dependencias y falta de CI individual. Los PR con defectos y los propios de Víctor permanecen sin aprobación automática ni fusión.

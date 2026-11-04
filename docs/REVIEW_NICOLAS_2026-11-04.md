@@ -2,6 +2,12 @@
 
 Revisor: Víctor con Codex. La revisión conserva la propiedad de archivos: no se corrigió código de API, SQL ni contratos de Nicolás. Sus commits se reunieron sin modificaciones en una rama aislada para verificar la integración; no se fusionaron en `main`.
 
+## Seguimiento durante la ejecución programada posterior al informe
+
+El registro de abajo conserva sus SHA históricos. GitHub muestra #27/#25/#28 ya fusionados en main `830a6eb`; no se ejecutaron esas fusiones desde esta revisión. Nicolás publicó #32 `18b30bac` (reloj tras bloqueo e inicio futuro), #33 `2d943fd` (logs sin credenciales) y #34 `e657d77` (privacidad Spot), propagados hasta N05. Sus deltas se revisaron y sus nuevas regresiones pasaron dentro de la [CI integrada 41931985620](https://github.com/Nicolas923-source/Ganadito/actions/runs/41931985620): 113/113 backend y tres jobs verdes. Falta CI individual de esos SHA; no se aprobaron sus dependencias bloqueadas.
+
+Quedan pendientes el P1 de seed #26, preflight #30, cursor de microsegundos #33 y los dos P2 de metadata/DTO #34. Los cuatro hallazgos corregidos en código no se reiteran como abiertos en la nueva base. Ver [seguimiento de la foto](SEGUIMIENTO_FOTO_2026-11-04.md) para la atribución de rutas, límite de la evidencia y detalle P3 del test Spot. Las [tres recomendaciones](DECISIONES_PENDIENTES_FOTO_2026-11-04.md) siguen sin acuerdo: no cambian contratos ni habilitan funciones. La revisión cruzada de Nicolás a Víctor sigue pendiente.
+
 ## Contrato y secuencia
 
 El usuario autorizó expresamente **solo** la aprobación y fusión del PR [#29](https://github.com/Nicolas923-source/Ganadito/pull/29). Se comprobó que contenía únicamente `docs/api/contrato-v1-acceso-lotes.md`, SHA `70fc1a5`, CI correcta y base `main`. Se revisaron rutas, sesión, errores, idempotencia, eventos y lectura de órdenes. Quedó integrado en `2ffe7d4`. Esto no aprueba las implementaciones de backend ni sus migraciones.
