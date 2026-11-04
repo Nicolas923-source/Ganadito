@@ -324,4 +324,40 @@ describe('Procesador Transactional Outbox y Difusión WebSocket en Tiempo Real',
       'Tras desconexión, el conteo de suscriptores para el lote debe volver a 0'
     );
   });
+
+  test('5. Bucle continuo de OutboxWorker con scheduleNext y detención limpia con stop()', async () => {
+    let tickCount = 0;
+    const worker = new OutboxWorker({
+      pool,
+      publisher: redisPublisher,
+      pollIntervalMs: 80,
+      workerId: 'loop-test-worker'
+    });
+
+    const originalTick = worker.tick.bind(worker);
+    worker.tick = async () => {
+      tickCount++;
+      return originalTick();
+    };
+
+    worker.start();
+    assert.strictEqual(worker.isRunning, true, 'El worker debe reportar isRunning = true tras start()');
+
+    // Esperar 300 ms para verificar que ejecute al menos 2 ticks
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.ok(tickCount >= 2, `Debe haber ejecutado al menos 2 ticks en 300 ms (ejecutados: ${tickCount})`);
+
+    // Detener el worker ordenadamente
+    await worker.stop();
+    assert.strictEqual(worker.isRunning, false, 'El worker debe reportar isRunning = false tras stop()');
+
+    const ticksAtStop = tickCount;
+    // Esperar 200 ms adicionales para comprobar que el worker no vuelve a ejecutar ningún tick
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    assert.strictEqual(
+      tickCount,
+      ticksAtStop,
+      `No deben ejecutarse más ticks tras stop() (inicial: ${ticksAtStop}, posterior: ${tickCount})`
+    );
+  });
 });
