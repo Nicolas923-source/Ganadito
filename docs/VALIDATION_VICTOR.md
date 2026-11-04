@@ -9,6 +9,7 @@ Base: `Nicolas923-source/Ganadito`, commit `dde293bc977ac090d631b6c90a2cb4bb6efc
 | `npm run build` | Correcto para API, web con adapter-node, contratos y shared. |
 | `npm run lint` | Termina correctamente, pero la base no define reglas de lint en los workspaces. No equivale a una auditoría de estilo. |
 | `npm test --workspace=@ganadito/web` | 3 pruebas unitarias correctas: idempotencia, snapshot ajeno/incompleto y eventos. |
+| `npm run test:proxy` después del build | 2 pruebas correctas de la salida Node: entorno privado, Bearer, consulta, cuerpo POST e idempotencia; las cookies del navegador no se reenvían. |
 | `npm run test:e2e` | 22 pruebas Chromium con respuestas controladas; ver suite y reporte local. No usa credenciales reales ni realiza cobros. |
 | `git diff --check` | Correcto. |
 | Salida Node de producción en localhost | Página de acceso visible en escritorio/móvil; proxy devuelve 502 claro con API apagada. |

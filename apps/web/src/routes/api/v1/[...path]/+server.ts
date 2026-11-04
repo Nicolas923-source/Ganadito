@@ -18,7 +18,7 @@ const forward: RequestHandler = async ({ request, params, url, fetch }) => {
     const response = await fetch(target, {
       method: request.method, headers,
       body: ['GET', 'HEAD'].includes(request.method) ? undefined : await request.arrayBuffer(),
-      signal: AbortSignal.timeout(15_000), redirect: 'error'
+      signal: AbortSignal.timeout(15_000), redirect: 'error', credentials: 'omit'
     });
     return new Response(response.body, { status: response.status, headers: {
       'Content-Type': response.headers.get('content-type') || 'application/json',

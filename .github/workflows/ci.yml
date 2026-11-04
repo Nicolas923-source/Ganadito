@@ -85,6 +85,9 @@ jobs:
       - name: Compilación (Build)
         run: npm run build
 
+      - name: Proxy de la web compilada
+        run: npm run test:proxy
+
   browser:
     name: Navegador con fixtures explícitos
     runs-on: ubuntu-latest

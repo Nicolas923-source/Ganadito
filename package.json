@@ -20,7 +20,8 @@
     "test": "npm run --workspaces --if-present test",
     "seed": "npm run seed --workspace=@ganadito/api",
     "build": "npm run --workspaces --if-present build",
-    "test:e2e": "playwright test --config tests/e2e/playwright.config.ts"
+    "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
+    "test:proxy": "node --test tests/e2e/proxy.test.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",
