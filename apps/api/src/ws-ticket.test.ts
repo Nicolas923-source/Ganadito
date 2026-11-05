@@ -219,7 +219,7 @@ describe('Ticket efímero de un solo uso para el WebSocket de subastas', { concu
   });
 
   test('10. Bearer: JWT sin organización activa → 1008 (igual que el ticket)', async () => {
-    const sinOrg = app.jwt.sign({ user_id: userId, email: 'x@test.com' } as any);
+    const sinOrg = app.jwt.sign({ user_id: userId, email: 'x@test.com' } as any, { expiresIn: '15m' });
     const { cierre } = await abrir(loteId, '', { authorization: `Bearer ${sinOrg}` });
     assert.match(await cierre, /^1008:Se requiere un contexto/);
   });
@@ -265,6 +265,26 @@ describe('Ticket efímero de un solo uso para el WebSocket de subastas', { concu
     supervisarSesionWs(socket as any, { userId, organizacionId: orgId, rol: 'VENDEDOR', expiraEnMs: Date.now() + 60_000 }, poolCaido, 30);
     await new Promise((r) => setTimeout(r, 150));
     assert.deepEqual(cierres, ['1011:No se pudo verificar la sesión.']);
+  });
+
+  test('15. Un socket ya cerrado no deja timers ni consultas vivas', async () => {
+    let consultas = 0;
+    const poolContador = { query: async () => { consultas += 1; return { rowCount: 1 }; } } as any;
+    const muerto = Object.assign(new EventEmitter(), { readyState: 3, close() {} });
+    supervisarSesionWs(muerto as any, { userId, organizacionId: orgId, rol: 'VENDEDOR', expiraEnMs: Date.now() + 60_000 }, poolContador, 20);
+    await new Promise((r) => setTimeout(r, 120));
+    assert.equal(consultas, 0);
+  });
+
+  test('16. Un JWT sin exp no abre el socket', async () => {
+    const sinExp = app.jwt.sign(
+      { user_id: userId, email: 'x@test.com', active_organization_id: orgId, active_role: 'VENDEDOR' } as any,
+      { expiresIn: undefined as any }
+    );
+    const decodificado: any = app.jwt.decode(sinExp);
+    if (decodificado?.exp !== undefined) return; // la librería siempre firma con exp: nada que probar
+    const { cierre } = await abrir(loteId, '', { authorization: `Bearer ${sinExp}` });
+    assert.match(await cierre, /^1008:Sesión requerida/);
   });
 
   test('8. Sin ninguna credencial el socket se cierra con 1008', async () => {

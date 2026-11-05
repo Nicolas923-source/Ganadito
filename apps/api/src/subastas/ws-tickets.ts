@@ -136,18 +136,24 @@ export function supervisarSesionWs(
   pool: pg.Pool,
   revalidacionMs: number = REVALIDACION_WS_MS
 ): void {
+  // El handshake hace varios await: si el cliente ya cortó, su 'close' ocurrió antes de
+  // registrar el listener y los timers no se limpiarían nunca. No se crean.
+  if (socket.readyState !== 0 && socket.readyState !== 1) return;
   let fallos = 0;
   let cerrado = false;
+  let enCurso = false;
   const cerrar = (codigo: number, motivo: string) => {
     if (cerrado) return;
     cerrado = true;
     if (socket.readyState === 0 || socket.readyState === 1) socket.close(codigo, motivo);
   };
-  const timerExpiracion = setTimeout(
-    () => cerrar(1008, 'Sesión expirada; reconecte con un ticket nuevo.'),
-    Math.max(0, sesion.expiraEnMs - Date.now())
-  );
+  // Acotado: setTimeout dispara de inmediato con retrasos > 2^31-1 ms.
+  const restante = Math.min(Math.max(0, sesion.expiraEnMs - Date.now()), DURACION_MAX_SESION_TICKET_MS);
+  const timerExpiracion = setTimeout(() => cerrar(1008, 'Sesión expirada; reconecte con un ticket nuevo.'), restante);
   const timerRevalidacion = setInterval(async () => {
+    // Sin solapes: con la BD lenta no se apilan consultas del mismo socket.
+    if (enCurso || cerrado) return;
+    enCurso = true;
     try {
       const vigente = await membresiaVigente(pool, sesion);
       fallos = 0;
@@ -155,6 +161,8 @@ export function supervisarSesionWs(
     } catch {
       fallos += 1;
       if (fallos >= MAX_FALLOS_REVALIDACION) cerrar(1011, 'No se pudo verificar la sesión.');
+    } finally {
+      enCurso = false;
     }
   }, revalidacionMs);
   timerExpiracion.unref?.();

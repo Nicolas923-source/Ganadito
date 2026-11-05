@@ -260,7 +260,7 @@ export const subastasWsRoutes: FastifyPluginAsync<SubastasWsRoutesOptions> = asy
         } catch {
           decoded = null;
         }
-        if (!decoded?.user_id) {
+        if (!decoded?.user_id || typeof decoded.exp !== 'number') {
           socket.close(1008, 'Sesión requerida.');
           return;
         }
@@ -274,7 +274,7 @@ export const subastasWsRoutes: FastifyPluginAsync<SubastasWsRoutesOptions> = asy
           userId: decoded.user_id,
           organizacionId: decoded.active_organization_id,
           rol: decoded.active_role,
-          expiraEnMs: (decoded.exp ?? Math.floor(Date.now() / 1000)) * 1000
+          expiraEnMs: decoded.exp * 1000
         };
         if (!(await membresiaVigente(options.pool, sesion))) {
           socket.close(1008, 'Sesión revocada.');
@@ -288,6 +288,8 @@ export const subastasWsRoutes: FastifyPluginAsync<SubastasWsRoutesOptions> = asy
         return;
       }
 
+      // El cliente pudo cortar durante los await anteriores: no registrar nada.
+      if (socket.readyState !== 1) return;
       sesionesWs.set(socket, sesion);
       supervisarSesionWs(socket, sesion, options.pool, options.revalidacionMs);
       await getHub().addClient(id, socket);
