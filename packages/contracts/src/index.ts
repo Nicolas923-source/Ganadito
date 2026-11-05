@@ -42,6 +42,9 @@ export * from './ai.js';
 // 12. Integraciones Tributarias y Financieras (SEE-SUNAT & CAVALI Factoring)
 export * from './tax.js';
 
+// 12b. Estimación orientativa de peso vivo (zoometría) y pesajes de balanza
+export * from './weight.js';
+
 // 13. Utilidades generales de contratos
 export interface HealthCheckResponse {
   status: 'ok' | 'degraded' | 'error';
