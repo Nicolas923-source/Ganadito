@@ -14,7 +14,7 @@ const VISTA = {
   calibracion: { tipo: 'REFERENCIA', punto_a: [100, 700], punto_b: [600, 700], distancia_cm: 100 }
 };
 
-type Modo = 'ok' | 'rechazo' | 'caido' | 'vinculante' | 'vistas_objeto' | 'sin_incertidumbre' | 'advertencia_no_texto' | 'sin_muestra';
+type Modo = 'ok' | 'rechazo' | 'caido' | 'vinculante' | 'vistas_objeto' | 'sin_incertidumbre' | 'advertencia_no_texto' | 'sin_muestra' | 'una_vista_vistas_objeto' | 'una_vista_vistas_vacio';
 
 describe('Estimaciones de peso por lote y pesajes de balanza', { concurrency: 1 }, () => {
   const pool = getPool();
@@ -55,6 +55,8 @@ describe('Estimaciones de peso por lote y pesajes de balanza', { concurrency: 1 
     if (modo === 'sin_incertidumbre') return { ...base, incertidumbre: { nivel_confianza: 0.9 }, muestra, calidad };
     if (modo === 'advertencia_no_texto') return { ...base, advertencias: [1, { x: 2 }], muestra, calidad };
     if (modo === 'sin_muestra') return { ...base, calidad };
+    if (modo === 'una_vista_vistas_objeto') return { ...base, muestra, calidad, vistas: {} };
+    if (modo === 'una_vista_vistas_vacio') return { ...base, muestra, calidad, vistas: [] };
     if (nVistas === 1) return { ...base, muestra, calidad };
     return { ...base, vistas: Array.from({ length: nVistas }, (_, i) => ({ indice: i, muestra, calidad })) };
   }
@@ -379,7 +381,7 @@ describe('Estimaciones de peso por lote y pesajes de balanza', { concurrency: 1 
 
   test('12. Respuesta del satélite con núcleo válido pero resto malformado: 502 y nada guardado', async () => {
     const lote = await crearLote(vendedor.token);
-    for (const m of ['vistas_objeto', 'sin_incertidumbre', 'advertencia_no_texto', 'sin_muestra'] as Modo[]) {
+    for (const m of ['vistas_objeto', 'sin_incertidumbre', 'advertencia_no_texto', 'sin_muestra', 'una_vista_vistas_objeto', 'una_vista_vistas_vacio'] as Modo[]) {
       modo = m;
       const vistas = m === 'vistas_objeto' ? [VISTA, VISTA] : [VISTA];
       const r = await estimar(lote, vendedor.token, { vistas });

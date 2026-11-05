@@ -287,6 +287,19 @@ describe('Ticket efímero de un solo uso para el WebSocket de subastas', { concu
     assert.match(await cierre, /^1008:Sesión requerida/);
   });
 
+  test('14b. Una consulta de PostgreSQL que nunca responde no congela la revalidación: falla cerrado', async () => {
+    const cierres: string[] = [];
+    const emisor = new EventEmitter();
+    const socket = Object.assign(emisor, {
+      readyState: 1,
+      close(codigo: number, motivo: string) { cierres.push(`${codigo}:${motivo}`); emisor.emit('close'); }
+    });
+    const poolColgado = { query: () => new Promise(() => {}) } as any;
+    supervisarSesionWs(socket as any, { userId, organizacionId: orgId, rol: 'VENDEDOR', expiraEnMs: Date.now() + 60_000 }, poolColgado, 30);
+    await new Promise((r) => setTimeout(r, 250));
+    assert.deepEqual(cierres, ['1011:No se pudo verificar la sesión.']);
+  });
+
   test('8. Sin ninguna credencial el socket se cierra con 1008', async () => {
     assert.match(await conectar(loteId, ''), /^1008:Sesión requerida/);
   });

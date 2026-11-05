@@ -290,6 +290,22 @@ export class SubastasService {
             'IDEMPOTENCY_IN_PROGRESS'
           );
         }
+        // Registro heredado (anterior a 0014, sin organización): se recupera la organización
+        // ORIGINAL desde la puja guardada. Si no coincide con la activa, o no se puede
+        // determinar, conflicto opaco: nunca se entrega el recibo a otro contexto.
+        if (record.organizacion_id === null) {
+          const original = await client.query<{ organizacion_postora_id: string | null }>(
+            'SELECT organizacion_postora_id FROM subasta_pujas WHERE id = $1',
+            [record.response_body?.puja_id ?? null]
+          );
+          if (original.rows[0]?.organizacion_postora_id !== activeOrgId) {
+            throw new SubastaError(
+              'La clave de idempotencia ya se usó con otra organización activa. Genere una clave nueva.',
+              409,
+              'IDEMPOTENCY_KEY_OTRO_CONTEXTO'
+            );
+          }
+        }
         await client.query('COMMIT');
         return record.response_body;
       }
