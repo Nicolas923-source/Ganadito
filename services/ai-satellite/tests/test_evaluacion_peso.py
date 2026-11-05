@@ -150,3 +150,19 @@ def test_ajuste_libre_devuelve_none_con_apalancamiento_extremo():
     x = np.array([5.0] * 11 + [6.0])
     y = x + np.random.default_rng(1).normal(0, 0.01, 12)
     assert ev.ajustar_libre(x, y) is None
+
+
+def test_fold_sin_variacion_no_recomienda_el_modelo_libre():
+    """Hallazgo #49 (Codex): 39 animales iguales y uno con PT 180.1 daban b=85.8 y MAPE 0."""
+    pares = [{"peso_real_kg": 400, "largo_corporal_cm": 140, "perimetro_cinta_cm": 180} for _ in range(39)]
+    pares.append({"peso_real_kg": 440, "largo_corporal_cm": 140, "perimetro_cinta_cm": 180.1})
+    f = client.post(URL, json={"pares": pares}).json()["calibracion_formula"]
+    assert f["libre"] is None
+    assert f["recomendado"] == "solo_escala"
+
+
+def test_exponente_fuera_de_rango_fisico_no_se_propone():
+    rng = np.random.default_rng(5)
+    x = rng.uniform(5.5, 6.5, 40)
+    y = 3.0 * x - 10 + rng.normal(0, 0.01, 40)  # b = 3: físicamente implausible
+    assert ev.ajustar_libre(x, y) is None

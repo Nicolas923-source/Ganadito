@@ -154,14 +154,26 @@ export function supervisarSesionWs(
     // Sin solapes: con la BD lenta no se apilan consultas del mismo socket.
     if (enCurso || cerrado) return;
     enCurso = true;
+    let plazo: ReturnType<typeof setTimeout> | undefined;
     try {
-      const vigente = await membresiaVigente(pool, sesion);
+      // Plazo por consulta: una promesa de PostgreSQL que nunca resuelve dejaría enCurso
+      // en true para siempre y el socket seguiría recibiendo sin revalidarse. Vencer el
+      // plazo cuenta como fallo (falla cerrado tras MAX_FALLOS_REVALIDACION).
+      const vigente = await Promise.race([
+        membresiaVigente(pool, sesion),
+        new Promise<never>((_, rechazar) => {
+          // Plazo propio, el doble del intervalo: una BD lenta pero sana no suma fallos espurios.
+          plazo = setTimeout(() => rechazar(new Error('PLAZO_REVALIDACION')), 2 * revalidacionMs);
+          plazo.unref?.();
+        })
+      ]);
       fallos = 0;
       if (!vigente) cerrar(1008, 'Sesión revocada.');
     } catch {
       fallos += 1;
       if (fallos >= MAX_FALLOS_REVALIDACION) cerrar(1011, 'No se pudo verificar la sesión.');
     } finally {
+      if (plazo) clearTimeout(plazo);
       enCurso = false;
     }
   }, revalidacionMs);

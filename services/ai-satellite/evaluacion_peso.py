@@ -181,6 +181,11 @@ def _sig(valor: float, cifras: int = 7) -> float:
 
 # Por debajo de esto, 1 - h_ii hace inestable (o infinito) el residuo LOOCV.
 MIN_UNO_MENOS_APALANCAMIENTO = 1e-8
+# Dispersión mínima de ln(S) que debe quedar en CADA fold del LOOCV (≈1 % en S, del
+# orden del error de medición): con menos, la pendiente de ese fold no está identificada.
+MIN_DESVIACION_LOG_S_FOLD = 0.01
+# Rango físico del exponente: fuera de él el ajuste libre es un artefacto numérico.
+RANGO_EXPONENTE_PLAUSIBLE = (0.5, 1.5)
 
 
 def _mape_desde_log(y: np.ndarray, prediccion_log: np.ndarray) -> float:
@@ -208,15 +213,30 @@ def ajustar_libre(x: np.ndarray, y: np.ndarray) -> AjusteFormula | None:
     toda la variación de S depende de un solo animal) hace que retirarlo deje la
     pendiente sin identificar y el residuo LOOCV sea infinito.
     """
-    diseno = np.column_stack([np.ones_like(x), x])
-    coef, *_ = np.linalg.lstsq(diseno, y, rcond=None)
-    residuos = y - diseno @ coef
-    xtx_inv = np.linalg.inv(diseno.T @ diseno)
-    apalancamiento = np.einsum("ij,jk,ik->i", diseno, xtx_inv, diseno)
+    n = len(y)
+    if n < 3:
+        return None
+    # Forma CENTRADA (estable): la inversión de X'X sin centrar perdía precisión y
+    # aceptaba folds sin variación de S.
+    xm = float(np.mean(x))
+    dx = x - xm
+    sxx = float(np.sum(dx**2))
+    if sxx <= 0:
+        return None
+    # Varianza de x en cada fold sin el punto i: Sxx_(-i) = Sxx - n/(n-1) * dx_i^2.
+    sxx_sin_i = sxx - (n / (n - 1)) * dx**2
+    if np.min(sxx_sin_i) / (n - 2) < MIN_DESVIACION_LOG_S_FOLD**2:
+        return None
+    b = float(np.sum(dx * (y - np.mean(y))) / sxx)
+    a = float(np.mean(y) - b * xm)
+    if not (RANGO_EXPONENTE_PLAUSIBLE[0] <= b <= RANGO_EXPONENTE_PLAUSIBLE[1]):
+        return None
+    coef = np.array([a, b])
+    residuos = y - (a + b * x)
+    apalancamiento = 1.0 / n + dx**2 / sxx
     if np.any(1 - apalancamiento < MIN_UNO_MENOS_APALANCAMIENTO):
         return None
     loo_residuos = residuos / (1 - apalancamiento)
-    n = len(y)
     ajuste = AjusteFormula(
         a=_sig(float(coef[0])), b=_sig(float(coef[1])),
         factor_escala=_sig(math.exp(float(coef[0]))),

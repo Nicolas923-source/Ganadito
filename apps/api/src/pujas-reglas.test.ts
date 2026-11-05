@@ -121,6 +121,36 @@ describe('N03: idempotencia de pujas, reglas de publicación y organización pos
     assert.strictEqual(repetida.json().puja_id, primera.json().puja_id);
   });
 
+  test('1c. Registro heredado (organizacion_id NULL): se usa la organización original de la puja', async () => {
+    const lote = (await crearLote()).json().id;
+    const key = `k-${crypto.randomUUID()}`;
+    const primera = await pujar(comprador, lote, 1100, key);
+    assert.strictEqual(primera.statusCode, 201, primera.body);
+    // Simula un registro anterior a la migración 0014.
+    await pool.query(`UPDATE idempotency_records SET organizacion_id = NULL WHERE user_id = $1 AND key = $2`, [comprador.userId, key]);
+
+    // Misma organización: repetición legítima.
+    assert.strictEqual((await pujar(comprador, lote, 1100, key)).json().puja_id, primera.json().puja_id);
+
+    // Otra organización: conflicto, aunque el registro no tenga organización.
+    const orgB = await pool.query<{ id: string }>(`INSERT INTO organizaciones (razon_social) VALUES ($1) RETURNING id`, [`Org L ${crypto.randomUUID().slice(0, 6)}`]);
+    await pool.query(`INSERT INTO user_organizaciones_roles (user_id, organizacion_id, rol, is_active_context) VALUES ($1, $2, 'COMPRADOR', FALSE)`, [comprador.userId, orgB.rows[0]!.id]);
+    const original = comprador.orgId;
+    await switchTo(comprador, orgB.rows[0]!.id, 'COMPRADOR');
+    try {
+      const r = await pujar(comprador, lote, 1100, key);
+      assert.strictEqual(r.statusCode, 409, r.body);
+      assert.strictEqual(r.json().code, 'IDEMPOTENCY_KEY_OTRO_CONTEXTO');
+      assert.ok(!r.body.includes(primera.json().puja_id), 'el conflicto no revela el recibo original');
+    } finally {
+      await switchTo(comprador, original, 'COMPRADOR');
+    }
+
+    // Puja sin organización registrada (datos previos a 0011): conflicto opaco también.
+    await pool.query('UPDATE subasta_pujas SET organizacion_postora_id = NULL WHERE id = $1', [primera.json().puja_id]);
+    assert.strictEqual((await pujar(comprador, lote, 1100, key)).statusCode, 409);
+  });
+
   test('2. Cinco envíos simultáneos con la misma clave: una sola puja, ninguna respuesta 500', async () => {
     const lote = (await crearLote()).json().id;
     const key = `k-${crypto.randomUUID()}`;

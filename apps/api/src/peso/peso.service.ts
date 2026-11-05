@@ -166,7 +166,7 @@ export function validarResultadoSatelite(r: unknown, numeroVistas = 1): Resultad
   const x = r as ResultadoSatelite | null;
   const formaVistas =
     numeroVistas === 1
-      ? !!x && muestraValida(x.muestra) && controlesValidos(x.calidad)
+      ? !!x && x.vistas === undefined && muestraValida(x.muestra) && controlesValidos(x.calidad)
       : !!x &&
         esListaDeObjetos(x.vistas) &&
         x.vistas!.length === numeroVistas &&
@@ -281,8 +281,10 @@ export class PesoService {
       throw err;
     }
     const r = validarResultadoSatelite(crudo, entrada.vistas.length);
-    const muestras = r.vistas ? r.vistas.map((v) => v.muestra) : [r.muestra];
-    const calidad = r.vistas ? r.vistas.flatMap((v) => v.calidad) : (r.calidad ?? []);
+    // La forma la decide el pedido (validada arriba), no la presencia de `vistas` en la respuesta.
+    const multivista = entrada.vistas.length > 1;
+    const muestras = multivista ? r.vistas!.map((v) => v.muestra) : [r.muestra];
+    const calidad = multivista ? r.vistas!.flatMap((v) => v.calidad) : (r.calidad ?? []);
 
     try {
       // El INSERT vuelve a comprobar que el lote siga editable: si la subasta empezó
