@@ -1,6 +1,14 @@
+import crypto from 'node:crypto';
 import type pg from 'pg';
 import { hashPassword, verifyPassword } from './crypto.js';
 import type { RegisterUserBody, RolOrganizacion } from './types.js';
+
+let hashFicticioCache: Promise<string> | undefined;
+/** Hash bcrypt de un valor aleatorio, calculado una vez, para igualar el tiempo del login. */
+function hashFicticio(): Promise<string> {
+  hashFicticioCache ??= hashPassword(crypto.randomUUID());
+  return hashFicticioCache;
+}
 
 export class AuthError extends Error {
   constructor(message: string, public statusCode: number = 400) {
@@ -136,6 +144,8 @@ export class AuthService {
     );
 
     if (userRes.rows.length === 0) {
+      // Mismo costo que un usuario existente: sin esto, la latencia revelaba qué emails existen.
+      await verifyPassword(plainPassword, await hashFicticio());
       throw new AuthError('Credenciales inválidas.', 401);
     }
 

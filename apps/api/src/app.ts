@@ -41,6 +41,8 @@ export interface AppOptions {
   aiServiceUrl?: string;
   sunatAdapter?: SunatAdapter;
   cavaliAdapter?: CavaliAdapter;
+  /** Por defecto TAX_INTEGRATIONS_ENABLED; las pruebas lo fuerzan. */
+  integracionesTributarias?: boolean;
   /** Overrides de configuración de pagos (por defecto se leen de PAYMENTS_* / WEBHOOK_SECRET). */
   pagos?: Partial<PagosConfig>;
 }
@@ -73,6 +75,32 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
           ...(options.logStream ? { stream: options.logStream } : {})
         }
       : false
+  });
+
+  // Todos los recursos con :id usan UUID. Un id mal formado es "no encontrado" (404) en
+  // vez de llegar a PostgreSQL y terminar en 500 por el error 22P02.
+  const UUID_PARAM = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  app.addHook('preValidation', async (request, reply) => {
+    const id = (request.params as Record<string, unknown> | undefined)?.id;
+    if (typeof id === 'string' && !UUID_PARAM.test(id)) {
+      return reply.status(404).send({ statusCode: 404, error: 'Not Found', message: 'Recurso no encontrado.' });
+    }
+  });
+
+  // Errores de restricción de PostgreSQL que una ruta no tradujo: respuesta coherente sin
+  // filtrar el detalle (que puede incluir valores).
+  app.setErrorHandler((error: any, request, reply) => {
+    const porCodigo: Record<string, [number, string]> = {
+      '22P02': [404, 'Recurso no encontrado.'],
+      '23505': [409, 'El recurso ya existe.'],
+      '23514': [400, 'Datos fuera de rango.'],
+      '22003': [400, 'Valor numérico fuera de rango.']
+    };
+    const mapeo = typeof error?.code === 'string' ? porCodigo[error.code] : undefined;
+    if (mapeo) return reply.status(mapeo[0]).send({ statusCode: mapeo[0], error: mapeo[0] === 409 ? 'Conflict' : mapeo[0] === 404 ? 'Not Found' : 'Bad Request', message: mapeo[1] });
+    const status = typeof error?.statusCode === 'number' && error.statusCode >= 400 ? error.statusCode : 500;
+    if (status >= 500) request.log.error(error);
+    return reply.status(status).send({ statusCode: status, error: status >= 500 ? 'Internal Server Error' : error.name ?? 'Error', message: status >= 500 ? 'Error interno.' : error.message });
   });
 
   // El 404 por defecto de Fastify escribe la URL cruda en el log y en la respuesta.
@@ -210,7 +238,8 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     prefix: '/api/v1',
     pool,
     sunatAdapter: options.sunatAdapter,
-    cavaliAdapter: options.cavaliAdapter
+    cavaliAdapter: options.cavaliAdapter,
+    habilitado: options.integracionesTributarias
   });
 
   return app;

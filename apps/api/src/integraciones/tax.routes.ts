@@ -11,6 +11,12 @@ import type {
 
 export interface TaxRoutesOptions {
   pool: pg.Pool;
+  /**
+   * SUNAT y CAVALI son SIMULADORES (no hay integración real). Por eso las escrituras
+   * están apagadas salvo TAX_INTEGRATIONS_ENABLED=true: con el stub activo se guardaban
+   * comprobantes "CONFIRMADO" por SUNAT que nunca se enviaron.
+   */
+  habilitado?: boolean;
   sunatAdapter?: SunatAdapter;
   cavaliAdapter?: CavaliAdapter;
 }
@@ -29,6 +35,18 @@ export const taxRoutes: FastifyPluginAsync<TaxRoutesOptions> = async (fastify, o
    * POST /api/v1/tributario/liquidaciones-compra
    * Emite una Liquidación de Compra Electrónica (SEE-SUNAT) vinculada a orden liquidada.
    */
+  const habilitado = options.habilitado ?? process.env.TAX_INTEGRATIONS_ENABLED === 'true';
+  fastify.addHook('onRequest', async (request, reply) => {
+    if (!habilitado && request.method !== 'GET') {
+      return reply.status(503).send({
+        statusCode: 503,
+        error: 'Service Unavailable',
+        code: 'INTEGRACION_DESHABILITADA',
+        message: 'Las integraciones SUNAT y CAVALI no están habilitadas (son simuladas).'
+      });
+    }
+  });
+
   fastify.post<{ Body: LiquidacionCompraInput }>(
     '/tributario/liquidaciones-compra',
     { preHandler: [authenticate, requireActiveOrganization] },

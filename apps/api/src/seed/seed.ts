@@ -41,6 +41,19 @@ const PROTOCOLOS_PERMITIDOS = new Set(['postgres:', 'postgresql:']);
  * Valida el destino efectivo del seed SIN abrir conexiones. Devuelve el motivo del
  * rechazo o null si el destino es local y está permitido.
  */
+/** Contraseña de los usuarios de demostración (ver comentario en la creación de usuarios). */
+export function resolverPasswordSeed(env: NodeJS.ProcessEnv): string {
+  const fueraDeLocal = (env.SEED_ALLOWED_HOSTS ?? '').trim() !== '';
+  const propia = env.SEED_PASSWORD?.trim();
+  if (fueraDeLocal) {
+    if (!propia || propia.length < 12) {
+      throw new Error('Con SEED_ALLOWED_HOSTS se requiere SEED_PASSWORD (mínimo 12 caracteres).');
+    }
+    return propia;
+  }
+  return propia || 'ganadito2026';
+}
+
 export function validarDestinoSeed(env: NodeJS.ProcessEnv = process.env): string | null {
   if (env.NODE_ENV === 'production') {
     return 'No se permite ejecutar seeders con NODE_ENV="production".';
@@ -309,7 +322,10 @@ export async function runDatabaseSeed(): Promise<void> {
 
     // 4. Inserción de Usuarios y Roles RBAC
     console.log('▶ [4/11] Sembrando Usuarios, credenciales bcrypt y Roles RBAC...');
-    const universalPasswordHash = bcryptjs.hashSync('ganadito2026', 10);
+    // Con SEED_ALLOWED_HOSTS (cualquier host fuera de local) se exige SEED_PASSWORD: la
+    // contraseña conocida 'ganadito2026' (también del ADMIN) solo vale en local.
+    const passwordSeed = resolverPasswordSeed(process.env);
+    const universalPasswordHash = bcryptjs.hashSync(passwordSeed, 10);
 
     const usuarios = [
       {
@@ -375,7 +391,7 @@ export async function runDatabaseSeed(): Promise<void> {
         [u.id, u.orgId, u.rol]
       );
     }
-    console.log(`  ✔ 6 Usuarios creados (contraseña universal: 'ganadito2026') con roles activos.`);
+    console.log(`  ✔ 6 Usuarios creados (contraseña: la de SEED_PASSWORD o 'ganadito2026' en local) con roles activos.`);
 
     // 5. Inserción de Establecimientos PostGIS
     console.log('▶ [5/11] Sembrando Establecimientos georreferenciados en PostGIS...');
@@ -721,12 +737,12 @@ export async function runDatabaseSeed(): Promise<void> {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('✅ BASE DE DATOS GANADITO SEMBRADA CON ÉXITO (100% IDEMPOTENTE)');
     console.log('   Credenciales de prueba:');
-    console.log('   • Admin:      admin@ganadito.pe      / ganadito2026');
-    console.log('   • Vendedor:   puno@ganadito.pe       / ganadito2026');
-    console.log('   • Comprador:  lurin@ganadito.pe      / ganadito2026');
-    console.log('   • Camal:      arequipa@ganadito.pe   / ganadito2026');
-    console.log('   • Minorista:  magdalena@ganadito.pe  / ganadito2026');
-    console.log('   • Transporte: logistica@ganadito.pe  / ganadito2026');
+    console.log('   • Admin:      admin@ganadito.pe      / <contraseña del seed>');
+    console.log('   • Vendedor:   puno@ganadito.pe       / <contraseña del seed>');
+    console.log('   • Comprador:  lurin@ganadito.pe      / <contraseña del seed>');
+    console.log('   • Camal:      arequipa@ganadito.pe   / <contraseña del seed>');
+    console.log('   • Minorista:  magdalena@ganadito.pe  / <contraseña del seed>');
+    console.log('   • Transporte: logistica@ganadito.pe  / <contraseña del seed>');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});

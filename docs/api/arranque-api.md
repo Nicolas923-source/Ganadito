@@ -24,6 +24,12 @@ curl http://localhost:4000/health
 
 **Pedido a Víctor (manifiestos):** en `apps/api/package.json`, `"dev": "tsx watch src/server.ts"` y `"start": "tsx src/server.ts"`.
 
+## Interruptores de módulos simulados
+| Variable | Por defecto | Efecto |
+|---|---|---|
+| `PAYMENTS_ENABLED` | `false` | Pagos apagados: `/pagos/checkout` responde 503. |
+| `TAX_INTEGRATIONS_ENABLED` | `false` | SUNAT y CAVALI son **simuladores**: sus escrituras (`POST /tributario/*`, `POST /fintech/cavali/*`) responden `503 INTEGRACION_DESHABILITADA`. Las lecturas siguen activas. |
+
 ## Qué hace al iniciar
 1. Valida la configuración. Si falta `JWT_SECRET` en producción, o pagos está habilitado sin `WEBHOOK_SECRET`, **no arranca**.
 2. Ejecuta `SELECT 1` contra PostgreSQL. Si falla, sale con código 1.

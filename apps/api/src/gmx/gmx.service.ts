@@ -146,6 +146,7 @@ export class GmxService {
           ? `SELECT * FROM gmx_ordenes
              WHERE producto = $1
                AND tipo_operacion = 'VENTA'
+               AND organizacion_id IS DISTINCT FROM $3
                AND estado IN ('ABIERTA', 'PARCIALMENTE_CALZADA')
                AND cantidad_restante_kg > 0
                AND precio_kilo_limite <= $2
@@ -154,15 +155,18 @@ export class GmxService {
           : `SELECT * FROM gmx_ordenes
              WHERE producto = $1
                AND tipo_operacion = 'COMPRA'
+               AND organizacion_id IS DISTINCT FROM $3
                AND estado IN ('ABIERTA', 'PARCIALMENTE_CALZADA')
                AND cantidad_restante_kg > 0
                AND precio_kilo_limite >= $2
              ORDER BY precio_kilo_limite DESC, created_at ASC
              FOR UPDATE SKIP LOCKED`;
 
+      // $3: la propia organización nunca es contraparte (evita autocalce / wash trading).
       const contrapartesRes = await client.query(sqlContrapartes, [
         input.producto,
-        input.precio_kilo_limite
+        input.precio_kilo_limite,
+        ordenActual.organizacion_id
       ]);
 
       const calcesGenerados: CalceGmx[] = [];
