@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
+import { limitar, REGLAS } from '../rate-limit.js';
 import type pg from 'pg';
 import { LogisticaService, LogisticaError, type RegistrarUnidadInput, type VisorFlete } from './logistica.service.js';
 import { createAuthMiddleware } from '../auth/auth.middleware.js';
@@ -31,7 +32,7 @@ export const logisticaRoutes: FastifyPluginAsync<LogisticaRoutesOptions> = async
   fastify.post<{ Body: CotizarFleteInput }>(
     '/cotizar',
     // Antes era anónima y con distancias exactas: permitía triangular establos ajenos.
-    { onRequest: [authenticate] },
+    { onRequest: [authenticate, limitar(fastify, REGLAS.cotizarUsuario)] },
     async (request, reply) => {
       try {
         const resultado = await logisticaService.cotizarFlete(

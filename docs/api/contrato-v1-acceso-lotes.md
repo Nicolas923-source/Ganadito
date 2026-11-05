@@ -119,6 +119,20 @@ Respuesta `201`:
 - Si hay timeout, reintenta **con la misma clave**. Un intento nuevo lleva una clave nueva.
 - Muestra la puja como aceptada **solo** cuando llega el `201`. No hay confirmaciones optimistas.
 
+## Límite de tasa [RATE]
+Con exceso de solicitudes la API responde `429 DEMASIADAS_SOLICITUDES` y el encabezado `Retry-After` (en segundos).
+
+| Ruta | Límite |
+|---|---|
+| `POST /auth/login` | 20 cada 15 min por IP y 10 cada 15 min por email |
+| `POST /auth/register` | 10 cada 15 min por IP |
+| `POST /subastas/:id/pujas` | 60 por minuto por usuario |
+| `POST /subastas/:id/live/ticket` | 30 por minuto por usuario |
+| `POST /subastas/:id/estimaciones-peso` | 20 por minuto por usuario |
+| `POST /logistica/cotizar` | 30 por minuto por usuario |
+
+Los contadores viven en memoria, en una sola instancia: con varias réplicas, cada una cuenta por separado. Se desactivan con `RATE_LIMIT_DISABLED=true`.
+
 ---
 
 ## 5. Tiempo real (WebSocket)

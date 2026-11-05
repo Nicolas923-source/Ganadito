@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
+import { limitar, REGLAS } from '../rate-limit.js';
 import type WebSocket from 'ws';
 import type { Redis } from 'ioredis';
 import type pg from 'pg';
@@ -193,7 +194,7 @@ export const subastasWsRoutes: FastifyPluginAsync<SubastasWsRoutesOptions> = asy
    */
   fastify.post<{ Params: { id: string } }>(
     '/subastas/:id/live/ticket',
-    { onRequest: [authenticate] },
+    { onRequest: [authenticate, limitar(fastify, REGLAS.ticketUsuario)] },
     async (request, reply) => {
       const id = request.params.id?.trim();
       if (!id || !UUID_RE.test(id)) {
