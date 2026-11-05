@@ -4,6 +4,8 @@ import type { Redis } from 'ioredis';
 import type pg from 'pg';
 import type { JwtUserPayload } from '../auth/types.js';
 import { getRedisSubscriber } from '../redis.js';
+import { createAuthMiddleware } from '../auth/auth.middleware.js';
+import { consumirTicketWs, emitirTicketWs, permiteAccessTokenEnUrl, TicketWsError } from './ws-tickets.js';
 
 export interface SubastasWsRoutesOptions {
   subscriber?: Redis;
@@ -170,7 +172,34 @@ export const subastasWsRoutes: FastifyPluginAsync<SubastasWsRoutesOptions> = asy
    * GET /api/v1/subastas/:id/live
    * Endpoint WebSocket para transmisión en tiempo real de eventos de subasta (pujas aceptadas, cierre).
    */
-  fastify.get<{ Params: { id: string }; Querystring: { access_token?: string } }>(
+  const authenticate = createAuthMiddleware(options.pool);
+
+  /**
+   * POST /api/v1/subastas/:id/live/ticket
+   * Emite un ticket de un solo uso (30 s) para abrir el WebSocket sin poner el JWT en la URL.
+   */
+  fastify.post<{ Params: { id: string } }>(
+    '/subastas/:id/live/ticket',
+    { onRequest: [authenticate] },
+    async (request, reply) => {
+      const id = request.params.id?.trim();
+      if (!id || !UUID_RE.test(id)) {
+        return reply.status(404).send({ statusCode: 404, error: 'Not Found', code: 'LOTE_NO_ENCONTRADO', message: 'Lote de subasta no encontrado.' });
+      }
+      try {
+        const emitido = await emitirTicketWs(options.pool, request.userSession!.userId, id);
+        reply.header('Cache-Control', 'no-store');
+        return reply.status(201).send(emitido);
+      } catch (err) {
+        if (err instanceof TicketWsError) {
+          return reply.status(err.statusCode).send({ statusCode: err.statusCode, error: err.name, code: err.code, message: err.message });
+        }
+        throw err;
+      }
+    }
+  );
+
+  fastify.get<{ Params: { id: string }; Querystring: { access_token?: string; ticket?: string } }>(
     '/subastas/:id/live',
     { websocket: true },
     async (socket, request) => {
@@ -181,19 +210,35 @@ export const subastasWsRoutes: FastifyPluginAsync<SubastasWsRoutesOptions> = asy
         return;
       }
 
-      // Los navegadores no pueden enviar cabeceras en el upgrade: se acepta ?access_token=
-      // (token de 15 min) o Authorization: Bearer para clientes no navegador.
-      const header = request.headers.authorization;
-      const token =
-        request.query.access_token ??
-        (header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : undefined);
-
-      try {
-        const decoded = token ? fastify.jwt.verify<JwtUserPayload>(token) : null;
-        if (!decoded?.user_id) throw new Error('sin sesión');
-      } catch {
-        socket.close(1008, 'Sesión requerida.');
-        return;
+      // Autenticación, en orden de preferencia:
+      //  1. ?ticket= de un solo uso (navegadores: no pueden enviar cabeceras en el upgrade);
+      //  2. Authorization: Bearer (clientes no navegador);
+      //  3. ?access_token= (OBSOLETO: el JWT queda en la URL; solo si está permitido).
+      const { ticket, access_token: tokenEnUrl } = request.query;
+      if (ticket !== undefined) {
+        const userId = await consumirTicketWs(options.pool, ticket, id);
+        if (!userId) {
+          socket.close(1008, 'Ticket inválido, vencido o ya usado.');
+          return;
+        }
+      } else {
+        const header = request.headers.authorization;
+        let token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : undefined;
+        if (!token && tokenEnUrl !== undefined) {
+          if (!permiteAccessTokenEnUrl()) {
+            socket.close(1008, 'access_token en la URL no está permitido; use ?ticket=.');
+            return;
+          }
+          request.log.warn('WS con ?access_token= (obsoleto): migrar a POST /live/ticket.');
+          token = tokenEnUrl;
+        }
+        try {
+          const decoded = token ? fastify.jwt.verify<JwtUserPayload>(token) : null;
+          if (!decoded?.user_id) throw new Error('sin sesión');
+        } catch {
+          socket.close(1008, 'Sesión requerida.');
+          return;
+        }
       }
 
       const lote = await options.pool.query('SELECT 1 FROM lotes_subasta WHERE id = $1', [id]);

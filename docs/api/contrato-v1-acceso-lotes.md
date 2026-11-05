@@ -122,8 +122,21 @@ Respuesta `201`:
 
 ## 5. Tiempo real (WebSocket)
 
-`GET /subastas/:id/live` (upgrade a WebSocket) **[N04: `?access_token=<jwt>` obligatorio]**
-- **[N04]** Si el token es inválido o el lote no existe, el servidor cierra la conexión con código `1008`.
+**Ticket de conexión [WS-TICKET].** Un navegador no puede enviar `Authorization` en el upgrade, y antes el JWT viajaba en la URL. Ahora el cliente sigue dos pasos:
+1. `POST /subastas/:id/live/ticket` con `Authorization: Bearer <access_token>`:
+   - `201` `{ ticket, expira_en_segundos: 30 }`, con `Cache-Control: no-store`;
+   - `401` sin sesión, `404` si el lote no existe, `429 DEMASIADOS_TICKETS` con más de 20 tickets sin usar.
+2. Abrir **de inmediato** `GET /subastas/:id/live?ticket=<ticket>`. El ticket:
+   - es de **un solo uso**, así que cada reconexión necesita uno nuevo;
+   - vale **30 s**;
+   - sirve **solo para ese lote**.
+
+`GET /subastas/:id/live` (upgrade a WebSocket) acepta tres credenciales, en este orden:
+1. `?ticket=`, que es lo recomendado para navegadores;
+2. `Authorization: Bearer`, para clientes que no son navegador;
+3. `?access_token=<jwt>`, **obsoleto**. Solo funciona fuera de producción o si `WS_PERMITIR_ACCESS_TOKEN_EN_URL=true`, y se eliminará cuando la web use el ticket.
+
+- **[N04]** Si la credencial es inválida o el lote no existe, el servidor cierra la conexión con código `1008`. Con un ticket vencido, usado o de otro lote, el motivo es `Ticket inválido, vencido o ya usado.`
 - El canal es **solo de servidor a cliente**. Las pujas se envían por REST.
 
 Mensaje **[N04]** (formato único):
