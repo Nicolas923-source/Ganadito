@@ -29,8 +29,9 @@ Antes de comenzar, registrar en el PR o en la tabla siguiente el editor y el alc
 | Dependencias de V06 | Víctor | Manifiestos npm y lockfile | PR de dependencias, previo a integración | Nicolás valida paquetes afectados. |
 | V06, navegador | Víctor | `tests/e2e/**` | PR de pruebas e integración | Fixtures explícitos; API real pendiente de N01 y contratos de lectura. |
 | V06, documentación y CI | Víctor | Documentación asignada, `.github/workflows/**`, plantilla de PR, `infrastructure/deployment/**` | PR de integración; revisión de Nicolás antes de fusión | No modifica backend, contratos ni migraciones. |
+| V05, privacidad autorizada | Víctor/Codex, temporal | `apps/api/src/trazabilidad/trazabilidad.service.ts`, `apps/api/src/mapa/mapa.types.ts`, `packages/contracts/src/traceability.ts`, `docs/api/contrato-v1-consulta.md` y pruebas específicas | Desde autorización expresa hasta entregar PR verificado; ver [registro](TRANSFERENCIA_V05_2026-11-04.md) | PUBLICA sin hashes; originales de Nicolás #46/#50 adoptados. La entrega corrige dirección nullable del tipo cercano y añade pruebas backend complementarias; Nicolás revisa. |
 
-Una transferencia debe indicar tarea, rutas, editor temporal, inicio y condición de fin. Pausar las ramas que editen esos archivos, transferir sus pruebas y resolver los cambios pendientes antes de devolver la propiedad. Este registro no afirma que Nicolás haya aprobado una transferencia: no hay transferencia de backend a Víctor.
+Una transferencia debe indicar tarea, rutas, editor temporal, inicio y condición de fin. Pausar las ramas que editen esos archivos, transferir sus pruebas y resolver los cambios pendientes antes de devolver la propiedad. La excepción V05 consta autorizada expresamente por el propietario; no constituye una transferencia general de backend a Víctor.
 
 ## Comprobación de propiedad
 

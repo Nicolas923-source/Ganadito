@@ -188,6 +188,7 @@ jobs:
     env:
       CI: 'true'
       GANADITO_ALLOW_REAL_E2E: isolated-local-fixtures
+      GANADITO_RELEASE_SHA: ${{ github.sha }}
       NODE_ENV: test
       DATABASE_URL: postgres://postgres:isolated-fixture-password@127.0.0.1:5432/ganadito_e2e_test
       REDIS_URL: redis://127.0.0.1:6379/15

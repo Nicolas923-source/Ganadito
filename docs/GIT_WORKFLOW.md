@@ -2,6 +2,8 @@
 
 Un repositorio oficial, dos clones y una rama por tarea. Víctor coordina la cola de PR. La [matriz de propiedad](OWNERSHIP.md) y sus excepciones se aplican también cuando una rama está aislada: Git no bloquea la edición de rutas ajenas.
 
+**Actualización vigente (5 de noviembre de 2026):** #45 actualizó AGENTS/OWNERSHIP: Nicolás decide la integración, con revisión de Claude y CI obligatoria; las correcciones posteriores van en PR nuevo. Las referencias siguientes a PR apilados, reglas de aprobación y método merge describen el procedimiento anterior y deben contrastarse con ese acuerdo y los ajustes actuales. #37/#44 y #46–#50 ya están integrados por otras acciones. La entrega V05 nueva parte de main `5b73e470`; Codex no fusiona, no despliega y no aprueba su propio código. La delegación de Víctor permite aprobar únicamente cambios ajenos realmente revisados, sin bloqueantes y con CI exacta verde.
+
 ## Empezar una tarea
 
 ```bash

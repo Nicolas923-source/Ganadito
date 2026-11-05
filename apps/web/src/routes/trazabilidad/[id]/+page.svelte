@@ -3,13 +3,20 @@
   import { page } from '$app/state';
   import { apiRequest } from '#lib/api.ts';
   import { session } from '#lib/session.ts';
-  import type { PasaporteDigitalResponse, VerificacionCadenaResponse } from '@ganadito/contracts';
+  import type { PasaporteDigitalVista, VerificacionCadenaResponse } from '@ganadito/contracts';
   import FichaBovinoHeader from '#lib/components/trazabilidad/FichaBovinoHeader.svelte';
   import CertificadoAuditoria from '#lib/components/trazabilidad/CertificadoAuditoria.svelte';
-  import LineaTiempoEventos from '#lib/components/trazabilidad/LineaTiempoEventos.svelte';
+  import LineaTiempoEventos, { type EventoLectura } from '#lib/components/trazabilidad/LineaTiempoEventos.svelte';
+
+  // Read existing history without claiming its names belong to the write enum.
+  // All private fields and the PUBLICA/COMPLETA distinction stay unchanged.
+  type PasaporteCompletoLectura = Omit<Extract<PasaporteDigitalVista, { vista: 'COMPLETA' }>, 'eventos'> & { readonly eventos: readonly EventoLectura[] };
+  type PasaportePublico = Extract<PasaporteDigitalVista, { vista: 'PUBLICA' }>;
+  type EventoPublicoLectura = Omit<PasaportePublico['eventos'][number], 'event_type'> & { readonly event_type: string };
+  type PasaporteLectura = PasaporteCompletoLectura | (Omit<PasaportePublico, 'eventos'> & { readonly eventos: readonly EventoPublicoLectura[] });
 
   let identificador = $derived(page.params.id ?? '');
-  let pasaporte = $state<PasaporteDigitalResponse | null>(null);
+  let pasaporte = $state<PasaporteLectura | null>(null);
   let verificacion = $state<VerificacionCadenaResponse | null>(null);
   let cargando = $state(false);
   let auditando = $state(false);
@@ -21,21 +28,29 @@
   function esObjeto(value: unknown): value is Record<string, unknown> {
     return value !== null && typeof value === 'object' && !Array.isArray(value);
   }
-  function esPasaporte(value: unknown, id: string): value is PasaporteDigitalResponse {
-    if (!esObjeto(value) || !esObjeto(value.bovino)) return false;
+  function esPasaporte(value: unknown, id: string, organizacionId: string | null): value is PasaporteLectura {
+    if (!esObjeto(value) || !esObjeto(value.bovino) || (value.vista !== 'COMPLETA' && value.vista !== 'PUBLICA')) return false;
+    const completa = value.vista === 'COMPLETA';
     const bovino = value.bovino;
     if (bovino.id !== id ||
-        !['codigo_arete', 'organizacion_id', 'sexo', 'estado'].every(key => typeof bovino[key] === 'string') ||
+        typeof bovino.codigo_arete !== 'string' ||
+        (completa ? !organizacionId || bovino.organizacion_id !== organizacionId : bovino.organizacion_id !== null) ||
+        typeof bovino.sexo !== 'string' || !['MACHO', 'HEMBRA'].includes(bovino.sexo) ||
+        typeof bovino.estado !== 'string' || !['VIVO', 'FAENADO', 'DECESO', 'TRANSFERIDO'].includes(bovino.estado) ||
         !(bovino.raza === null || typeof bovino.raza === 'string') ||
         !(bovino.fecha_nacimiento === null || (typeof bovino.fecha_nacimiento === 'string' && Number.isFinite(Date.parse(bovino.fecha_nacimiento)))) ||
         !Array.isArray(value.eventos)) return false;
     const secuencias = new Set<number>();
     for (const evento of value.eventos) {
-      if (!esObjeto(evento) || evento.bovino_id !== id || typeof evento.secuencia !== 'number' || !Number.isInteger(evento.secuencia) ||
-          secuencias.has(evento.secuencia) || typeof evento.event_type !== 'string' || typeof evento.autor_id !== 'string' ||
-          !esObjeto(evento.metadata) || typeof evento.prev_hash !== 'string' || typeof evento.current_hash !== 'string' ||
-          !/^[a-f0-9]{64}$/i.test(evento.prev_hash) || !/^[a-f0-9]{64}$/i.test(evento.current_hash) ||
+      if (!esObjeto(evento) || (typeof evento.id !== 'string' && !(typeof evento.id === 'number' && Number.isFinite(evento.id))) ||
+          evento.bovino_id !== id || typeof evento.secuencia !== 'number' || !Number.isInteger(evento.secuencia) || evento.secuencia <= 0 ||
+          secuencias.has(evento.secuencia) || typeof evento.event_type !== 'string' || !esObjeto(evento.metadata) ||
           typeof evento.created_at !== 'string' || !Number.isFinite(Date.parse(evento.created_at))) return false;
+      if (completa) {
+        if (typeof evento.autor_id !== 'string' || !evento.autor_id ||
+            typeof evento.prev_hash !== 'string' || typeof evento.current_hash !== 'string' ||
+            !/^[a-f0-9]{64}$/i.test(evento.prev_hash) || !/^[a-f0-9]{64}$/i.test(evento.current_hash)) return false;
+      } else if (evento.autor_id !== null || 'prev_hash' in evento || 'current_hash' in evento) return false;
       secuencias.add(evento.secuencia);
     }
     return true;
@@ -51,6 +66,7 @@
     peticionAuditoria?.abort();
     const controller = new AbortController();
     peticion = controller;
+    const organizacionId = $session.organizationId;
     pasaporte = null;
     verificacion = null;
     errorConsulta = '';
@@ -59,10 +75,10 @@
     cargando = true;
     try {
       const data = await apiRequest<unknown>('/api/v1/trazabilidad/bovinos/' + encodeURIComponent(id) + '/pasaporte', { signal: controller.signal });
-      if (!esPasaporte(data, id)) {
+      if (!esPasaporte(data, id, organizacionId)) {
         throw new Error('La API no devolvió un pasaporte válido para el bovino solicitado.');
       }
-      if (!controller.signal.aborted) pasaporte = data;
+      if (!controller.signal.aborted && identificador === id && $session.organizationId === organizacionId) pasaporte = data;
     } catch (error) {
       if (!controller.signal.aborted) errorConsulta = error instanceof Error ? error.message : 'No se pudo consultar el pasaporte.';
     } finally {
@@ -71,7 +87,7 @@
   }
 
   async function auditar() {
-    if (!pasaporte || auditando) return;
+    if (pasaporte?.vista !== 'COMPLETA' || pasaporte.bovino.organizacion_id !== $session.organizationId || auditando) return;
     peticionAuditoria?.abort();
     const controller = new AbortController();
     peticionAuditoria = controller;
@@ -117,7 +133,9 @@
   {:else if $session.status !== 'authenticated'}<div class="rounded-2xl border border-slate-800 bg-slate-900 p-6"><p class="text-slate-300">Inicia sesión para consultar este pasaporte.</p><a href="/acceso" class="inline-block text-emerald-400 mt-3">Ir al acceso</a></div>
   {:else if cargando}<p role="status" class="rounded-xl bg-slate-900 p-6 text-slate-400">Consultando pasaporte…</p>
   {:else if errorConsulta}<p role="alert" class="rounded-xl border border-rose-800 bg-rose-950/40 p-5 text-rose-200">{errorConsulta}</p>
-  {:else if pasaporte}
+  {:else if pasaporte?.vista === 'PUBLICA'}
+    <p role="status" class="rounded-xl border border-amber-800 bg-slate-900 p-5 text-slate-300">La vista completa no está disponible para tu organización. La API devolvió una proyección pública con autor y organización reservados; la publicación del pasaporte público en la web todavía no está habilitada.</p>
+  {:else if pasaporte?.vista === 'COMPLETA' && pasaporte.bovino.organizacion_id === $session.organizationId}
     <FichaBovinoHeader bovino={pasaporte.bovino} />
     <p class="text-sm text-slate-400">Los datos y eventos provienen del registro consultado. La integridad de la cadena no acredita certificaciones sanitarias ni verifica el contenido declarado.</p>
     <CertificadoAuditoria {verificacion} isLoading={auditando} onReverificar={() => void auditar()} />

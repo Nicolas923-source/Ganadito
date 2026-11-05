@@ -26,7 +26,9 @@ export interface EstablecimientoResponse {
 }
 
 /** Resultado de /establecimientos/cercanos: posición pública y distancia. */
-export interface EstablecimientoCercanoResponse extends EstablecimientoResponse, UbicacionPublica {
+export interface EstablecimientoCercanoResponse extends Omit<EstablecimientoResponse, 'direccion_texto'>, UbicacionPublica {
+  /** La dirección exacta de un establo ajeno no se entrega al lector público. */
+  direccion_texto: string | null;
   distancia_km: number;
 }
 

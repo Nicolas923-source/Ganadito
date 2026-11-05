@@ -2,6 +2,8 @@
 
 Alcance inicial del plan: acceso y organización → lote → puja → cierre → orden pendiente de pago, con datos ficticios. Mayoristas, GMX, logística, IA y pasarela real corresponden a bloques posteriores. Base inspeccionada: `dde293bc977ac090d631b6c90a2cb4bb6efcb40e` del repositorio `Nicolas923-source/Ganadito`.
 
+**Seguimiento vigente, 5 de noviembre:** base `5b73e470`, #37/#44 ya integrados por otras acciones. La nueva entrega V05 adopta los originales de privacidad de Nicolás #46/#50 y añade interfaz, pruebas de privacidad real y web compilada. Ver [matriz de los 24 hitos](HITOS_VICTOR_2026-11-05.md) para evidencia, hallazgos actuales y las seis aceptaciones de Nicolás; los estados de PR y defectos que figuran abajo son históricos y no se deben repetir sin consultar GitHub actual.
+
 ## Matriz de aceptación
 
 | Tarea | Rutas de Víctor | Evidencia necesaria |

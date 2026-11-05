@@ -24,3 +24,22 @@ export function assertIsolatedRealEnvironment(env) {
   requireDestination(env.REDIS_URL, redis, 'REDIS_URL');
   if (env.PAYMENTS_ENABLED !== 'false') throw new Error('[real E2E] PAYMENTS_ENABLED debe ser false explícitamente.');
 }
+
+// Never forward API credentials, inherited PUBLIC_* values or Node preload options
+// to Vite/adapter-node. This is also used before importing the build toolchain.
+export function isolatedWebEnvironment(env) {
+  assertIsolatedRealEnvironment(env);
+  if (typeof env.GANADITO_RELEASE_SHA !== 'string' || !/^[a-f0-9]{40}$/.test(env.GANADITO_RELEASE_SHA)) {
+    throw new Error('[real E2E] GANADITO_RELEASE_SHA debe ser el SHA completo del checkout probado.');
+  }
+  const safe = {};
+  for (const key of ['SystemRoot', 'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP', 'PATH', 'Path', 'CI']) {
+    if (env[key] !== undefined) safe[key] = env[key];
+  }
+  return {
+    ...safe, NODE_ENV: 'production', GANADITO_RELEASE_SHA: env.GANADITO_RELEASE_SHA,
+    HOST: '127.0.0.1', PORT: '4180', ORIGIN: 'http://127.0.0.1:4180',
+    API_INTERNAL_URL: 'http://127.0.0.1:4181', PUBLIC_API_URL: '', PUBLIC_WS_URL: '',
+    PUBLIC_LIVE_AUCTIONS_ENABLED: 'false'
+  };
+}
