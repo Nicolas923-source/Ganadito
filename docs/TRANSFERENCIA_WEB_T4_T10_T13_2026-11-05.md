@@ -42,3 +42,10 @@ Nicolás pidió expresamente una revisión completa del repositorio y la correcc
   - se quitan las que no lee nadie.
 
 **Condición de fin:** el PR se une con la CI en verde. Las rutas vuelven a Víctor, que puede revisar después de la unión.
+
+## Ampliación: MVP v0.1.0 (2026-11-05)
+
+Con la misma autorización de Nicolás («crea la primera versión del MVP»), el PR del catálogo toca estas rutas de Víctor:
+- `apps/web/src/routes/subastas/+page.svelte` y el componente nuevo `apps/web/src/lib/components/subastas/CatalogoLotes.svelte`: catálogo, «Mis lotes» y detalle del lote en el formulario.
+- `tests/e2e/{fixtures,auctions.spec,confirmation.spec}.ts` y `tests/e2e/real/auction-order.spec.ts`: la etiqueta nueva del precio y el e2e del catálogo.
+- `README.md`: el MVP y cómo levantarlo en local.

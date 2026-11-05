@@ -18,6 +18,8 @@ export async function installSession(page: Page, options: { organizationId?: str
   const token = fakeToken(organizationId, role);
   await page.addInitScript(token => sessionStorage.setItem('ganadito.session.token', token), token);
   await page.route('**/api/v1/auth/me', route => route.fulfill({ json: profile(organizationId, role) }));
+  // Catálogo vacío por defecto (las pruebas que lo necesitan lo sobrescriben).
+  await page.route('**/api/v1/subastas?*', route => route.fulfill({ json: { data: [], next_cursor: null } }));
   // Ticket de un solo uso para el WebSocket (POST /live/ticket): uno distinto por pedido.
   let emitidos = 0;
   await page.route('**/api/v1/subastas/*/live/ticket', route => {

@@ -1,11 +1,14 @@
 import type pg from 'pg';
+import { sqlPosicionPublica, sqlUbicacionAproximada } from '../mapa/ubicacion-publica.js';
 import crypto from 'node:crypto';
 import type {
   CrearLoteSubastaInput,
   LoteSubastaResponse,
   LoteSnapshotResponse,
   EmitirPujaInput,
-  PujaAceptadaResponse
+  PujaAceptadaResponse,
+  DetalleLote,
+  LoteCatalogo
 } from './subastas.types.js';
 
 export type CodigoErrorSubasta =
@@ -26,6 +29,8 @@ function aCentimos(valor: unknown): number | null {
   const c = Math.round(valor * 100);
   return Math.abs(c - valor * 100) < 1e-6 ? c : null;
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export class SubastaError extends Error {
   constructor(message: string, public statusCode: number = 400, public code?: CodigoErrorSubasta) {
@@ -55,7 +60,6 @@ export class SubastasService {
       anti_sniping_extension = 120,
       estado = 'ACTIVO'
     } = input;
-
     if (typeof precio_base !== 'number' || precio_base <= 0) {
       throw new SubastaError('precio_base debe ser un número positivo mayor a 0.', 400);
     }
@@ -82,6 +86,7 @@ export class SubastasService {
     if (aCentimos(precio_base) === null || aCentimos(incremento_minimo) === null) {
       throw new SubastaError('precio_base e incremento_minimo admiten como máximo 2 decimales.', 400);
     }
+    const detalle = await this.validarDetalle(vendedorOrgId, input);
 
     const fechaInicioDate = fecha_inicio ? new Date(fecha_inicio) : new Date();
     const fechaCierreDate = new Date(fecha_cierre);
@@ -115,9 +120,14 @@ export class SubastasService {
          anti_sniping_seconds,
          anti_sniping_extension,
          version,
-         creado_por_user_id
+         creado_por_user_id,
+         cantidad_animales,
+         categoria,
+         raza,
+         descripcion,
+         establecimiento_id
        )
-       VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8, $9, 1, $10)
+       VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8, $9, 1, $10, $11, $12, $13, $14, $15)
        RETURNING
          id,
          codigo_lote,
@@ -132,6 +142,11 @@ export class SubastasService {
          anti_sniping_seconds,
          anti_sniping_extension,
          version,
+         cantidad_animales,
+         categoria,
+         raza,
+         descripcion,
+         establecimiento_id,
          created_at,
          updated_at`,
       [
@@ -144,7 +159,12 @@ export class SubastasService {
         fechaCierreDate.toISOString(),
         anti_sniping_seconds,
         anti_sniping_extension,
-        creadoPorUserId ?? null
+        creadoPorUserId ?? null,
+        detalle.cantidad_animales,
+        detalle.categoria,
+        detalle.raza,
+        detalle.descripcion,
+        detalle.establecimiento_id
       ]
     );
     } catch (err: any) {
@@ -157,14 +177,131 @@ export class SubastasService {
     return res.rows[0]!;
   }
 
+  private async validarDetalle(vendedorOrgId: string, input: CrearLoteSubastaInput): Promise<DetalleLote> {
+    const texto = (v: unknown, campo: string, max: number): string | null => {
+      if (v === undefined || v === null || v === '') return null;
+      if (typeof v !== 'string' || v.trim().length > max) {
+        throw new SubastaError(`${campo} debe ser texto de hasta ${max} caracteres.`, 400);
+      }
+      return v.trim() || null;
+    };
+    const cantidad = input.cantidad_animales;
+    if (cantidad !== undefined && cantidad !== null && (!Number.isInteger(cantidad) || cantidad < 1 || cantidad > 10_000)) {
+      throw new SubastaError('cantidad_animales debe ser un entero entre 1 y 10 000.', 400);
+    }
+    let establecimiento: string | null = null;
+    if (input.establecimiento_id !== undefined && input.establecimiento_id !== null && input.establecimiento_id !== '') {
+      if (typeof input.establecimiento_id !== 'string' || !UUID_RE.test(input.establecimiento_id)) {
+        throw new SubastaError('establecimiento_id debe ser un UUID.', 400);
+      }
+      const est = await this.pool.query(
+        'SELECT 1 FROM establecimientos WHERE id::text = $1 AND organizacion_id = $2',
+        [input.establecimiento_id, vendedorOrgId]
+      );
+      if (est.rowCount === 0) {
+        throw new SubastaError('El establecimiento de origen debe pertenecer a su organización.', 403);
+      }
+      establecimiento = input.establecimiento_id;
+    }
+    return {
+      cantidad_animales: cantidad ?? null,
+      categoria: texto(input.categoria, 'categoria', 40),
+      raza: texto(input.raza, 'raza', 60),
+      descripcion: texto(input.descripcion, 'descripcion', 500),
+      establecimiento_id: establecimiento
+    };
+  }
+
   /**
-   * Consulta el Snapshot oficial en tiempo real del lote sin bloqueos transaccionales.
-   * Calcula el tiempo restante oficial del reloj del servidor de base de datos.
+   * Catálogo de lotes (GET /subastas). Público: solo lotes publicados (no BORRADOR).
+   * Con `mios` y una sesión de vendedor: todos los lotes de su organización, incluidos
+   * los borradores. El origen se entrega con la posición PÚBLICA del establecimiento.
+   * Paginación por cursor (fecha_cierre, id).
    */
+  async listarLotes(
+    query: { estado?: string; mios?: string; limit?: string; cursor?: string },
+    visor: { userId?: string; organizacionId?: string }
+  ): Promise<{ data: LoteCatalogo[]; next_cursor: string | null }> {
+    const limit = query.limit === undefined ? 20 : Number(query.limit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
+      throw new SubastaError('limit debe ser un entero entre 1 y 50.', 400);
+    }
+    const mios = query.mios === 'true';
+    if (mios && !visor.organizacionId) {
+      throw new SubastaError('Inicie sesión con su organización para ver sus lotes.', 401);
+    }
+    const estados = ['ACTIVO', 'ADJUDICADO', 'DESIERTO', 'CERRADO', 'CANCELADO', 'BORRADOR'];
+    if (query.estado !== undefined && !estados.includes(query.estado)) {
+      throw new SubastaError(`estado debe ser uno de: ${estados.join(', ')}.`, 400);
+    }
+    if (query.estado === 'BORRADOR' && !mios) {
+      throw new SubastaError('Los borradores solo se listan con mios=true.', 400);
+    }
+
+    const values: unknown[] = [visor.organizacionId ?? null, limit + 1];
+    const condiciones: string[] = [mios ? 'l.vendedor_id = $1' : "l.estado <> 'BORRADOR'"];
+    if (query.estado) {
+      values.push(query.estado);
+      condiciones.push(`l.estado = $${values.length}`);
+    } else if (!mios) {
+      condiciones.push("l.estado = 'ACTIVO'");
+    }
+    if (query.cursor) {
+      let ts: unknown, id: unknown;
+      try {
+        [ts, id] = JSON.parse(Buffer.from(query.cursor, 'base64url').toString('utf8'));
+      } catch {
+        throw new SubastaError('cursor inválido.', 400);
+      }
+      if (typeof ts !== 'string' || !/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(ts) || Number.isNaN(Date.parse(ts)) || typeof id !== 'string' || !UUID_RE.test(id)) {
+        throw new SubastaError('cursor inválido.', 400);
+      }
+      values.push(ts, id);
+      condiciones.push(`(l.fecha_cierre, l.id) > ($${values.length - 1}::timestamptz, $${values.length}::uuid)`);
+    }
+
+    const res = await this.pool.query<LoteCatalogo & { cursor_ts: string; lat: number | null; lon: number | null; ubigeo: string | null; aprox: boolean | null }>(
+      `SELECT l.id, l.codigo_lote, l.estado,
+              l.precio_base::float, l.precio_actual::float, l.incremento_minimo::float,
+              l.fecha_inicio, l.fecha_cierre,
+              (l.estado = 'ACTIVO' AND l.fecha_inicio <= clock_timestamp() AND l.fecha_cierre > clock_timestamp()) AS es_abierta,
+              l.cantidad_animales, l.categoria, l.raza, l.descripcion, l.establecimiento_id,
+              (SELECT count(*)::int FROM subasta_pujas p WHERE p.lote_id = l.id) AS total_pujas,
+              (SELECT sum(ep.peso_estimado_kg)::float FROM estimaciones_peso ep WHERE ep.lote_id = l.id) AS peso_estimado_total_kg,
+              (l.vendedor_id IS NOT DISTINCT FROM $1::uuid) AS es_mio,
+              e.ubigeo,
+              ST_Y((${sqlPosicionPublica('e', '$1')})::geometry) AS lat,
+              ST_X((${sqlPosicionPublica('e', '$1')})::geometry) AS lon,
+              ${sqlUbicacionAproximada('e', '$1')} AS aprox,
+              to_char(l.fecha_cierre AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_ts
+       FROM lotes_subasta l
+       LEFT JOIN establecimientos e ON e.id = l.establecimiento_id
+       WHERE ${condiciones.join(' AND ')}
+       ORDER BY l.fecha_cierre ASC, l.id ASC
+       LIMIT $2`,
+      values
+    );
+    const hayMas = res.rows.length > limit;
+    const filas = hayMas ? res.rows.slice(0, limit) : res.rows;
+    const data = filas.map(({ cursor_ts: _c, lat, lon, ubigeo, aprox, ...lote }) => ({
+      ...lote,
+      origen: ubigeo !== null && lat !== null && lon !== null ? { ubigeo, latitud: lat, longitud: lon, ubicacion_aproximada: !!aprox } : null
+    }));
+    const ultimo = filas[filas.length - 1];
+    return {
+      data,
+      next_cursor: hayMas && ultimo ? Buffer.from(JSON.stringify([ultimo.cursor_ts, ultimo.id])).toString('base64url') : null
+    };
+  }
+
   /**
    * Lectura pública del lote. Privacidad: el postor que va ganando (id y nombre, dato
    * personal) solo se revela A ÉL MISMO; para los demás va null. Un lote en BORRADOR no
    * está publicado: solo lo ve su organización vendedora (404 para el resto).
+   */
+  /**
+   * Consulta el Snapshot oficial en tiempo real del lote sin bloqueos transaccionales.
+   * Calcula el tiempo restante oficial del reloj del servidor de base de datos.
    */
   async obtenerSnapshot(loteId: string, visor: { userId?: string; organizacionId?: string } = {}): Promise<LoteSnapshotResponse> {
     const res = await this.pool.query<{

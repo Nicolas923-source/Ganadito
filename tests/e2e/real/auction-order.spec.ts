@@ -57,7 +57,7 @@ test('registro y publicación web, puja persistida, cierre automático y orden a
   await page.getByRole('link', { name: 'Ir a subastas' }).click();
   const uiCode = `WEB-${run.slice(0, 8)}`;
   await page.getByLabel('Código del lote (opcional)').fill(uiCode);
-  await page.getByLabel('Precio base (S/)').fill('4200');
+  await page.getByLabel('Precio base del lote completo (S/)').fill('4200');
   await page.getByLabel('Incremento mínimo (S/)').fill('100');
   // The normal UI uses minute precision and the API's default 60-second anti-sniping.
   // Leave at least two minutes before close so the bid does not extend the auction.
@@ -70,7 +70,7 @@ test('registro y publicación web, puja persistida, cierre automático y orden a
   expect(publication.status()).toBe(201);
   const uiLot = await publication.json();
   expect(uiLot.vendedor_id).toBe(sellerSession.active_context.organizacion_id);
-  await expect(page.getByRole('status')).toContainText(`El servidor confirmó el lote ${uiCode}`);
+  await expect(page.getByRole('status').filter({ hasText: `El servidor confirmó el lote ${uiCode}` })).toBeVisible();
   await page.getByRole('link', { name: 'Abrir lote publicado' }).click();
   await expect(page.getByRole('region', { name: 'Estado oficial del lote' })).toContainText(uiCode);
   const uiSnapshot = await request.get(`${api}/subastas/${uiLot.id}/snapshot`);
