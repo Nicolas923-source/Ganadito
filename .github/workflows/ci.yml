@@ -16,6 +16,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  python:
+    name: Pruebas del satélite IA (Python)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: services/ai-satellite/requirements.txt
+
+      - name: Instalar dependencias del satélite
+        run: python -m pip install -r services/ai-satellite/requirements.txt
+
+      - name: Pruebas de IA con imágenes y datos sintéticos
+        run: python -m pytest -q services/ai-satellite/tests
+
   validate:
     name: Validar Monorepo
     runs-on: ubuntu-latest
