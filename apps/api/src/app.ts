@@ -34,6 +34,9 @@ export interface AppOptions {
   logStream?: Writable;
   redisSubscriber?: Redis;
   wsHub?: SubastaWsHub;
+  /** Solo pruebas: revalidación y vida máxima de los sockets de subastas. */
+  wsRevalidacionMs?: number;
+  wsDuracionMaxSesionMs?: number;
   aiClient?: AiClientService;
   aiServiceUrl?: string;
   sunatAdapter?: SunatAdapter;
@@ -144,7 +147,9 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     prefix: '/api/v1',
     subscriber: options.redisSubscriber,
     hub: options.wsHub,
-    pool
+    pool,
+    revalidacionMs: options.wsRevalidacionMs,
+    duracionMaxSesionMs: options.wsDuracionMaxSesionMs
   });
 
   // Registrar módulo financiero de pagos y webhooks de pasarelas

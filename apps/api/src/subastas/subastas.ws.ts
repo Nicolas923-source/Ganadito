@@ -5,12 +5,25 @@ import type pg from 'pg';
 import type { JwtUserPayload } from '../auth/types.js';
 import { getRedisSubscriber } from '../redis.js';
 import { createAuthMiddleware } from '../auth/auth.middleware.js';
-import { consumirTicketWs, emitirTicketWs, permiteAccessTokenEnUrl, sesionesWs, TicketWsError } from './ws-tickets.js';
+import {
+  consumirTicketWs,
+  emitirTicketWs,
+  membresiaVigente,
+  permiteAccessTokenEnUrl,
+  sesionesWs,
+  supervisarSesionWs,
+  TicketWsError,
+  type SesionWs
+} from './ws-tickets.js';
 
 export interface SubastasWsRoutesOptions {
   subscriber?: Redis;
   hub?: SubastaWsHub;
   pool: pg.Pool;
+  /** Cada cuánto se revalida la membresía de un socket abierto (por defecto 30 s). */
+  revalidacionMs?: number;
+  /** Vida máxima de una conexión con ticket (por defecto 15 min). */
+  duracionMaxSesionMs?: number;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -220,13 +233,16 @@ export const subastasWsRoutes: FastifyPluginAsync<SubastasWsRoutesOptions> = asy
       //  2. Authorization: Bearer (clientes no navegador);
       //  3. ?access_token= (OBSOLETO: el JWT queda en la URL; solo si está permitido).
       const { ticket, access_token: tokenEnUrl } = request.query;
+      let sesion: SesionWs;
       if (ticket !== undefined) {
-        const sesion = await consumirTicketWs(options.pool, ticket, id);
-        if (!sesion) {
+        const consumida = await consumirTicketWs(options.pool, ticket, id);
+        if (!consumida) {
           socket.close(1008, 'Ticket inválido, vencido o ya usado.');
           return;
         }
-        sesionesWs.set(socket, sesion);
+        sesion = options.duracionMaxSesionMs
+          ? { ...consumida, expiraEnMs: Date.now() + options.duracionMaxSesionMs }
+          : consumida;
       } else {
         const header = request.headers.authorization;
         let token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : undefined;
@@ -238,12 +254,30 @@ export const subastasWsRoutes: FastifyPluginAsync<SubastasWsRoutesOptions> = asy
           request.log.warn('WS con ?access_token= (obsoleto): migrar a POST /live/ticket.');
           token = tokenEnUrl;
         }
+        let decoded: (JwtUserPayload & { exp?: number }) | null = null;
         try {
-          const decoded = token ? fastify.jwt.verify<JwtUserPayload>(token) : null;
-          if (!decoded?.user_id) throw new Error('sin sesión');
-          sesionesWs.set(socket, { userId: decoded.user_id, organizacionId: decoded.active_organization_id });
+          decoded = token ? fastify.jwt.verify<JwtUserPayload & { exp?: number }>(token) : null;
         } catch {
+          decoded = null;
+        }
+        if (!decoded?.user_id || typeof decoded.exp !== 'number') {
           socket.close(1008, 'Sesión requerida.');
+          return;
+        }
+        // Igual que el ticket: hace falta un contexto activo y vigente EN POSTGRESQL; una
+        // firma válida no basta si la membresía se revocó durante los 15 min del JWT.
+        if (!decoded.active_organization_id || !decoded.active_role) {
+          socket.close(1008, 'Se requiere un contexto organizacional activo.');
+          return;
+        }
+        sesion = {
+          userId: decoded.user_id,
+          organizacionId: decoded.active_organization_id,
+          rol: decoded.active_role,
+          expiraEnMs: decoded.exp * 1000
+        };
+        if (!(await membresiaVigente(options.pool, sesion))) {
+          socket.close(1008, 'Sesión revocada.');
           return;
         }
       }
@@ -254,6 +288,10 @@ export const subastasWsRoutes: FastifyPluginAsync<SubastasWsRoutesOptions> = asy
         return;
       }
 
+      // El cliente pudo cortar durante los await anteriores: no registrar nada.
+      if (socket.readyState !== 1) return;
+      sesionesWs.set(socket, sesion);
+      supervisarSesionWs(socket, sesion, options.pool, options.revalidacionMs);
       await getHub().addClient(id, socket);
     }
   );
