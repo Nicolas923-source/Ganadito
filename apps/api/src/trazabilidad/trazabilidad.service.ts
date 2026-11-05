@@ -350,7 +350,7 @@ export class TrazabilidadService {
         prev_hash: e.prev_hash,
         current_hash: e.current_hash,
         autor_id: null as unknown as string,
-        created_at: (e as EventoTrazabilidad & { created_at?: string | Date }).created_at
+        created_at: e.created_at
       })) as EventoTrazabilidad[],
       vista: 'PUBLICA'
     };

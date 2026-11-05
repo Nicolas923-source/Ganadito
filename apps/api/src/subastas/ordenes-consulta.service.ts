@@ -105,7 +105,7 @@ export class OrdenesConsultaService {
     if (!UUID_RE.test(id)) {
       throw new ConsultaOrdenError('Orden de compra no encontrada.', 404);
     }
-    const res = await this.pool.query<OrdenResumen>(
+    const res = await this.pool.query<OrdenResumen & { cursor_ts: string }>(
       `${SELECT_ORDEN}
        WHERE o.id = $1 AND (o.organizacion_compradora_id = $2 OR o.organizacion_vendedora_id = $2)`,
       [id, organizacionId]
@@ -113,6 +113,7 @@ export class OrdenesConsultaService {
     if (res.rows.length === 0) {
       throw new ConsultaOrdenError('Orden de compra no encontrada.', 404);
     }
-    return res.rows[0]!;
+    const { cursor_ts: _cursor, ...orden } = res.rows[0]!;
+    return orden;
   }
 }

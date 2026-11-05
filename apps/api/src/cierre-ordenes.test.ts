@@ -164,6 +164,8 @@ describe('N04: cierre con organización correcta, consulta de órdenes y WebSock
     assert.strictEqual(p2.data.length, 1);
     assert.notStrictEqual(p2.data[0].id, p1.data[0].id);
     assert.ok(!('cursor_ts' in p2.data[0]), 'la marca interna del cursor no se expone');
+    const detalle = (await app.inject({ method: 'GET', url: `/api/v1/ordenes/${p2.data[0].id}`, headers: auth(vendedor.token) })).json();
+    assert.ok(!('cursor_ts' in detalle), 'tampoco en GET /ordenes/:id');
   });
 
   test('3b. Regresión: dos órdenes en el MISMO milisegundo no se saltan entre páginas', async () => {
