@@ -11,9 +11,9 @@ Agrega la estimación de **un animal** al lote.
 - **Quién:** `VENDEDOR` cuya organización activa es la dueña del lote.
 - **Cuándo:** solo si el lote está en `BORRADOR`, o en `ACTIVO` antes de `fecha_inicio` (según el reloj de PostgreSQL). Al empezar la subasta, la información queda congelada.
 - **Encabezado opcional:** `Idempotency-Key` (1–128 caracteres).
-  - Un reintento con el mismo cuerpo devuelve `200`, la misma estimación y `Idempotent-Replayed: true`, sin volver a llamar a la IA.
+  - Un reintento con el mismo cuerpo devuelve `200`, la misma estimación y `Idempotent-Replayed: true`, sin volver a llamar a la IA. **Esto vale también si la subasta ya empezó**: la regla del lote editable aplica solo a altas nuevas.
   - Si la misma clave llega con otro cuerpo, devuelve `409 IDEMPOTENCIA_CONFLICTO`.
-- **Límites:** el cuerpo admite hasta 26 MB y cada `imagen_base64` hasta unos 11,2 MB, que equivalen a 8 MB de imagen; si se supera, responde `413 IMAGEN_DEMASIADO_GRANDE`.
+- **Límites:** el servidor responde `413` si se supera el cuerpo, también con `Transfer-Encoding: chunked`. En ese caso el cliente puede ver `ECONNRESET` en lugar del 413, porque el servidor corta con datos sin leer; la web debe comprimir antes de enviar. El cuerpo admite hasta 26 MB y cada `imagen_base64` hasta unos 11,2 MB, que equivalen a 8 MB de imagen; si se supera, responde `413 IMAGEN_DEMASIADO_GRANDE`.
 - **Orden de validación:** la sesión y el rol se validan en `onRequest`, **antes** de leer el cuerpo. Sin token, la respuesta es 401 sin parsear nada.
 
 ```json
@@ -62,7 +62,7 @@ Agrega la estimación de **un animal** al lote.
 | 409 | `LOTE_NO_EDITABLE` | La subasta ya empezó o el lote está cerrado (también si empezó mientras corría la IA) |
 | 409 | `ANIMAL_DUPLICADO`, `IDEMPOTENCIA_CONFLICTO` | — |
 | 413 / 422 | `IA_RECHAZO` | La IA rechazó la foto o los puntos (no hay marcador, la medida es implausible, la imagen es muy grande). `detalle` trae el motivo, sin repetir la entrada |
-| 502 | `IA_RESPUESTA_INVALIDA` | La respuesta de la IA es incoherente (por ejemplo, viene como vinculante) |
+| 502 | `IA_RESPUESTA_INVALIDA` | La respuesta de la IA es incoherente: viene como vinculante, o le falta o está malformada la incertidumbre, las advertencias, la calidad o la muestra (por ejemplo `vistas: {}` o un número de vistas distinto del enviado) |
 | 503 | `IA_NO_DISPONIBLE` | La IA está caída, no respondió a tiempo (20 s) u ocupada. **No se inventa un peso** |
 
 ## GET `/api/v1/subastas/:id/estimaciones-peso`
@@ -87,7 +87,10 @@ Es pública, igual que el snapshot del lote, con una excepción: las estimacione
 Registra el peso real de balanza de una muestra del piloto (etapa 2).
 
 - **Quién:** `ADMIN`, `OPERADOR` o `AUDITOR`. El vendedor **no** puede registrar el pesaje de su propio ganado, para no sesgar la calibración.
-- Nadie de la **organización vendedora** del lote puede registrarlo, aunque tenga rol `OPERADOR`: responde `403 CONFLICTO_DE_INTERES`.
+- **Conflicto de interés:** se comprueba por **usuario**. Responde `403 CONFLICTO_DE_INTERES` si quien registra:
+  - tiene cualquier membresía en la organización vendedora, aunque en ese momento esté activo en otra organización con rol `OPERADOR`;
+  - o creó la estimación;
+  - o tiene activa la propia organización vendedora.
 - Se admite un pesaje por estimación; un segundo devuelve `409 PESAJE_DUPLICADO`.
 
 ```json
