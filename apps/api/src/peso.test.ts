@@ -14,7 +14,7 @@ const VISTA = {
   calibracion: { tipo: 'REFERENCIA', punto_a: [100, 700], punto_b: [600, 700], distancia_cm: 100 }
 };
 
-type Modo = 'ok' | 'rechazo' | 'caido' | 'vinculante';
+type Modo = 'ok' | 'rechazo' | 'caido' | 'vinculante' | 'vistas_objeto' | 'sin_incertidumbre' | 'advertencia_no_texto' | 'sin_muestra';
 
 describe('Estimaciones de peso por lote y pesajes de balanza', { concurrency: 1 }, () => {
   const pool = getPool();
@@ -42,11 +42,19 @@ describe('Estimaciones de peso por lote y pesajes de balanza', { concurrency: 1 
       es_vinculante: modo === 'vinculante',
       validado: false,
       advertencias: ['Estimación orientativa: no es un pesaje y puede equivocarse.'],
-      incertidumbre: { nivel_confianza: 0.9, desviacion_log: 0.12, coeficiente_variacion: 0.12, n_simulaciones: 4000, semilla: 1, contribuciones: [] },
+      incertidumbre: {
+        nivel_confianza: 0.9, desviacion_log: 0.12, coeficiente_variacion: 0.12, n_simulaciones: 4000, semilla: 1,
+        contribuciones: [{ fuente: 'modelo', descripcion: 'x', contribucion: 1, por_vista: false }]
+      },
       estado: 'COMPLETADO'
     };
     const muestra = { largo_corporal_cm: 140, profundidad_pecho_cm: 70, perimetro_toracico_cm: 183.7 };
     const calidad = [{ codigo: 'PERFIL', estado: 'OK', valor: 0, umbral: '<= 20 grados', detalle: '' }];
+    // Respuestas con el núcleo numérico válido pero el resto malformado (hallazgo de #41).
+    if (modo === 'vistas_objeto') return { ...base, vistas: {} };
+    if (modo === 'sin_incertidumbre') return { ...base, incertidumbre: { nivel_confianza: 0.9 }, muestra, calidad };
+    if (modo === 'advertencia_no_texto') return { ...base, advertencias: [1, { x: 2 }], muestra, calidad };
+    if (modo === 'sin_muestra') return { ...base, calidad };
     if (nVistas === 1) return { ...base, muestra, calidad };
     return { ...base, vistas: Array.from({ length: nVistas }, (_, i) => ({ indice: i, muestra, calidad })) };
   }
@@ -352,6 +360,117 @@ describe('Estimaciones de peso por lote y pesajes de balanza', { concurrency: 1 
     const duena = await app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${vendedor.token}` } });
     assert.equal(duena.statusCode, 200);
     assert.equal(duena.json().numero_estimaciones, 1);
+  });
+
+  test('11. Replay: la misma clave tras iniciar la subasta devuelve 200 con lo guardado (no 409)', async () => {
+    modo = 'ok';
+    const lote = await crearLote(vendedor.token);
+    const clave = crypto.randomUUID();
+    const a = await estimar(lote, vendedor.token, { vistas: [VISTA] }, clave);
+    assert.equal(a.statusCode, 201);
+    await pool.query(`UPDATE lotes_subasta SET fecha_inicio = NOW() - INTERVAL '1 minute' WHERE id = $1`, [lote]);
+    const b = await estimar(lote, vendedor.token, { vistas: [VISTA] }, clave);
+    assert.equal(b.statusCode, 200, b.body);
+    assert.equal(b.json().id, a.json().id);
+    assert.equal(b.headers['idempotent-replayed'], 'true');
+    // Una solicitud NUEVA sí se rechaza.
+    assert.equal((await estimar(lote, vendedor.token, { vistas: [VISTA] }, crypto.randomUUID())).json().code, 'LOTE_NO_EDITABLE');
+  });
+
+  test('12. Respuesta del satélite con núcleo válido pero resto malformado: 502 y nada guardado', async () => {
+    const lote = await crearLote(vendedor.token);
+    for (const m of ['vistas_objeto', 'sin_incertidumbre', 'advertencia_no_texto', 'sin_muestra'] as Modo[]) {
+      modo = m;
+      const vistas = m === 'vistas_objeto' ? [VISTA, VISTA] : [VISTA];
+      const r = await estimar(lote, vendedor.token, { vistas });
+      assert.equal(r.statusCode, 502, `${m}: ${r.body}`);
+      assert.equal(r.json().code, 'IA_RESPUESTA_INVALIDA');
+    }
+    modo = 'ok';
+    assert.equal(await contar(lote), 0);
+  });
+
+  test('13. Conflicto de interés por usuario: el vendedor no pesa su lote ni desde un rol OPERADOR de OTRA organización', async () => {
+    modo = 'ok';
+    const lote = await crearLote(vendedor.token);
+    const est = (await estimar(lote, vendedor.token, { vistas: [VISTA] })).json();
+    const yo = (await app.inject({ method: 'GET', url: '/api/v1/auth/me', headers: { authorization: `Bearer ${vendedor.token}` } })).json();
+    const userId = yo.user?.id ?? yo.id;
+    const orgB = await pool.query<{ id: string }>(`INSERT INTO organizaciones (razon_social) VALUES ($1) RETURNING id`, [`Org B ${crypto.randomUUID().slice(0, 6)}`]);
+    await pool.query(
+      `INSERT INTO user_organizaciones_roles (user_id, organizacion_id, rol, is_active_context) VALUES ($1, $2, 'OPERADOR', FALSE)`,
+      [userId, orgB.rows[0]!.id]
+    );
+    const enB = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/organizations/switch-context',
+      headers: { authorization: `Bearer ${vendedor.token}` },
+      payload: { organizacion_id: orgB.rows[0]!.id, rol: 'OPERADOR' }
+    });
+    assert.equal(enB.statusCode, 200, enB.body);
+    try {
+      const r = await app.inject({
+        method: 'POST',
+        url: `/api/v1/estimaciones-peso/${est.id}/pesaje`,
+        headers: { authorization: `Bearer ${enB.json().access_token}` },
+        payload: { peso_real_kg: 400, balanza_descripcion: 'Balanza de la org B' }
+      });
+      assert.equal(r.statusCode, 403, r.body);
+      assert.equal(r.json().code, 'CONFLICTO_DE_INTERES');
+    } finally {
+      const volver = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/organizations/switch-context',
+        headers: { authorization: `Bearer ${enB.json().access_token}` },
+        payload: { organizacion_id: vendedor.orgId, rol: 'VENDEDOR' }
+      });
+      vendedor.token = volver.json().access_token;
+    }
+    // Personal interno sin vínculo con la vendedora sí puede.
+    const ok = await app.inject({
+      method: 'POST',
+      url: `/api/v1/estimaciones-peso/${est.id}/pesaje`,
+      headers: { authorization: `Bearer ${admin.token}` },
+      payload: { peso_real_kg: 400, balanza_descripcion: 'Balanza camal piloto' }
+    });
+    assert.equal(ok.statusCode, 201, ok.body);
+  });
+
+  test('14. Cuerpo enorme en chunked (sin Content-Length) por HTTP real: el servidor responde 413, no 400', async () => {
+    // App propia con un hook que registra el estado: con chunked el cliente suele recibir
+    // ECONNRESET (el servidor corta con datos sin leer y TCP descarta la respuesta en vuelo),
+    // así que lo verificable es lo que respondió el servidor.
+    const estados: number[] = [];
+    const appHttp = buildApp({ pool, aiClient });
+    appHttp.addHook('onResponse', async (req, rep) => {
+      if (req.url.includes('/estimaciones-peso')) estados.push(rep.statusCode);
+    });
+    await appHttp.listen({ port: 0, host: '127.0.0.1' });
+    try {
+      const puerto = (appHttp.server.address() as AddressInfo).port;
+      const lote = await crearLote(vendedor.token);
+      await new Promise<void>((resolve) => {
+        const req = http.request({
+          host: '127.0.0.1', port: puerto, method: 'POST', path: `/api/v1/subastas/${lote}/estimaciones-peso`,
+          headers: { 'content-type': 'application/json', 'transfer-encoding': 'chunked', authorization: `Bearer ${vendedor.token}` }
+        }, (res) => { res.resume(); res.on('end', () => resolve()); });
+        req.on('error', () => resolve());
+        const trozo = 'A'.repeat(1024 * 1024);
+        req.write('{"vistas":[{"imagen_base64":"');
+        let enviados = 0;
+        const enviar = () => {
+          if (req.destroyed) return;
+          if (enviados++ >= 40) return void req.end('"}]}');
+          req.write(trozo, () => setImmediate(enviar));
+        };
+        enviar();
+      });
+      for (let k = 0; k < 50 && estados.length === 0; k++) await new Promise((r) => setTimeout(r, 20));
+      assert.deepEqual(estados, [413]);
+      assert.equal(await contar(lote), 0);
+    } finally {
+      await appHttp.close();
+    }
   });
 
   test('10. Evaluación: solo ADMIN/AUDITOR y reenvía los pares con medidas y cinta', async () => {
