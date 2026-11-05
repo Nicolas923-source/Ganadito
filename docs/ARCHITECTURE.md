@@ -23,7 +23,7 @@ ganadito/
 │   ├── web/                    # Frontend (SvelteKit + TypeScript)
 │   └── api/                    # Backend API (Node.js + Fastify + TypeScript)
 ├── services/
-│   └── ai/                     # Servicio especializado (Python 3.11/3.12)
+│   └── ai-satellite/           # Satélite de IA (FastAPI, Python 3.12)
 ├── packages/
 │   ├── contracts/              # Interfaces, esquemas de validación y DTOs
 │   ├── shared/                 # Utilidades puras y funciones transversales
@@ -62,7 +62,7 @@ ganadito/
 - No se asume soporte de preautorizaciones ni custodia automática en billeteras peruanas (Yape / Plin) sin documentación oficial del proveedor.
 - Todo webhook de pasarela debe validar firmas criptográficas, garantizar idempotencia y registrar conciliación.
 
-### Servicio de IA (`services/ai`)
+### Servicio de IA (`services/ai-satellite`)
 - Ejecuta en un proceso satélite e independiente en Python (FastAPI/PyTorch/OpenCV).
 - Se comunica con el backend API mediante llamadas asíncronas o colas de trabajo, protegiendo al núcleo transaccional de consumos elevados de CPU o memoria.
 

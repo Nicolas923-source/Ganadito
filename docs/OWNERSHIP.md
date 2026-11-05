@@ -15,7 +15,7 @@ Base del acuerdo: plan de programación Víctor + Nicolás, páginas 2 y 3; cód
 | `infrastructure/database/**`, `infrastructure/docker/**` | Nicolás | Migraciones, seeds y servicios locales; una sola cola de cambios SQL. |
 | `packages/contracts/src/**`, `docs/api/**` | Nicolás | Contratos y ejemplos, acordados antes de implementar cambios dependientes. |
 | `packages/shared/**`, `packages/config/**` | Nicolás | Utilidades y configuración compartida; consultar impacto en frontend. |
-| `services/ai/**`, `services/ai-satellite/**` | Nicolás | Etapas posteriores; resultados simulados identificados. |
+| `services/ai-satellite/**` | Nicolás | IA de peso (V1) real y orientativa; video y CIELAB marcados como simulados o sin validar. |
 
 Ejemplos sensibles: `app.ts`, `index.ts`, `db.ts` y módulos de API pertenecen a Nicolás; `+layout.svelte`, `app.css` y componentes globales web pertenecen a Víctor. La excepción de manifiestos npm se aplica también dentro de carpetas de Nicolás.
 

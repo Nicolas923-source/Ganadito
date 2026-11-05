@@ -1,5 +1,7 @@
 # Solicitud de revisión de Víctor
 
+> **Documento histórico.** Su estado fue reemplazado por [ACTA_ACEPTACION_V01_V06.md](ACTA_ACEPTACION_V01_V06.md) (PR #53) y por los PR #54–#58. Se conserva como evidencia; no describe el estado actual.
+
 Repositorio de destino: `Nicolas923-source/Ganadito`. Base del plan: `dde293b`.
 
 ## PR de dependencias

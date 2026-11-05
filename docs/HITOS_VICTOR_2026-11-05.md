@@ -1,5 +1,7 @@
 # Los 24 hitos del flujo inicial V01–V06
 
+> **Documento histórico.** Su estado fue reemplazado por [ACTA_ACEPTACION_V01_V06.md](ACTA_ACEPTACION_V01_V06.md) (PR #53) y por los PR #54–#58. Se conserva como evidencia; no describe el estado actual.
+
 Son **24 en total**, no 24 tareas adicionales: seis bloques con cuatro criterios cada uno. Se conserva el denominador del informe anterior. I = implementación y comprobación estática; F = navegador con respuestas controladas; R = integración real con datos ficticios; A = aceptación cruzada de Nicolás. Los tres primeros son evidencia técnica; el cuarto necesita al otro programador.
 
 Base de esta entrega: `5b73e470` de main. #37 y #44 ya están integrados por otras acciones; esta entrega conserva las correcciones originales de Nicolás #46/#50. El trabajo previo se preservó localmente sin publicar duplicados. No se fusiona ni se despliega en esta entrega.

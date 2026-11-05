@@ -1,5 +1,7 @@
 # Seguimiento de la foto y del informe - 4 de noviembre de 2026
 
+> **Documento histórico.** Su estado fue reemplazado por [ACTA_ACEPTACION_V01_V06.md](ACTA_ACEPTACION_V01_V06.md) (PR #53) y por los PR #54–#58. Se conserva como evidencia; no describe el estado actual.
+
 Este registro corresponde a la ejecución programada posterior al informe. El PDF original tiene corte 14:37 Bogotá, fuente 2d90080 y un índice orientativo de 71%; no acredita por sí mismo el estado posterior y no se modificó retroactivamente.
 
 ## Estado contrastado en GitHub
