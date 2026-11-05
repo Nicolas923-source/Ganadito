@@ -18,33 +18,33 @@ No editar rutas N fuera de la transferencia, contratos de WS/pujas, SQL, migraci
 
 Rutas: cuatro archivos transferidos y pruebas focales puras/privacidad existentes.
 
-- [ ] DTO lectura discriminado: COMPLETA conserva entidades/autor/organización/hashes; PUBLICA representa nullables reales y omite ambos hashes.
-- [ ] Lookup de metadata seguro ante propiedades heredadas y desconocidas; regresión roja/verdes sin modificar historial.
-- [ ] Ocho tipos permitidos, objetos/arrays, acentos, texto libre, autor/organización nulos, ausencia de hashes pública, presencia privada e integridad intacta.
-- [ ] Documentar la política aprobada y eliminar casts que ocultan nulabilidad.
+- [x] DTO lectura discriminado: COMPLETA conserva entidades/autor/organización/hashes; PUBLICA representa nullables reales y omite ambos hashes.
+- [x] Lookup de metadata seguro ante propiedades heredadas y desconocidas; regresión roja/verdes sin modificar historial.
+- [x] Ocho tipos permitidos, objetos/arrays, acentos, texto libre, autor/organización nulos, ausencia de hashes pública, presencia privada e integridad intacta.
+- [x] Documentar la política aprobada y eliminar casts que ocultan nulabilidad.
 
 ## Tarea 2: interfaz y navegador con fixtures
 
 Rutas: apps/web y tests/e2e/map-trace.spec.ts.
 
-- [ ] Transportar/validar ubicacion_aproximada y nullables; indicador ausente o inválido no se interpreta como ubicación exacta.
-- [ ] Área o marcador difuso, avisos y distancia aproximada en mapa/lista/Spot/popup; selección conserva privacidad.
-- [ ] Pasaporte discriminado, contexto dueño y respuestas PUBLICA sin atribuciones inventadas; mantener ruta pública web desactivada.
-- [ ] Regresiones de posiciones propias/ajenas, respuestas malformadas, contexto/cancelación, XSS y ausencia de consultas en ruta pública desactivada.
+- [x] Transportar/validar ubicacion_aproximada y nullables; indicador ausente o inválido no se interpreta como ubicación exacta.
+- [x] Área o marcador difuso, avisos y distancia aproximada en mapa/lista/Spot/popup; selección conserva privacidad.
+- [x] Pasaporte discriminado, contexto dueño y respuestas PUBLICA sin atribuciones inventadas; mantener ruta pública web desactivada.
+- [x] Regresiones de posiciones propias/ajenas, respuestas malformadas, contexto/cancelación, XSS y ausencia de consultas en ruta pública desactivada.
 
 ## Tarea 3: integración real y artefacto de entrega
 
 Rutas: tests/e2e/real, configuración/CI propia si corresponde, infrastructure/deployment.
 
-- [ ] Recorrido V05 real con API existente: datos ficticios, anónimo/ajeno/dueño en mapa y Spot; pasaporte propietario/verificación y proyección pública sin hashes en API. Sin SQL directo ni seeds.
-- [ ] El recorrido real usa web compilada adapter-node y registra su SHA; conservar guardias, pagos/WS apagados y ausencia de artefactos sensibles.
-- [ ] Actualizar runbook/registro: recuperación HTTP/recarga comprobada, WS diferido por permisos/revocación y staging real aún sujeto a autorización.
+- [x] Recorrido V05 real con API existente: datos ficticios, anónimo/ajeno/dueño en mapa y Spot; pasaporte propietario/verificación y proyección pública sin hashes en API. Sin SQL directo ni seeds.
+- [x] El recorrido real usa web compilada adapter-node y registra su SHA; conservar guardias, pagos/WS apagados y ausencia de artefactos sensibles.
+- [x] Actualizar runbook/registro: recuperación HTTP/recarga comprobada, WS diferido por permisos/revocación y staging real aún sujeto a autorización.
 
 ## Entrega final
 
-- [ ] Typecheck/build, pruebas relevantes y revisión independiente del diff con defectos corregidos.
-- [ ] Publicar PR acotado contra main `5b73e470` (Nicolás ya integró #37/#44 y los originales #46/#50), observar CI del HEAD final y evidencias reales, incluidas regresiones previas.
-- [ ] Registrar matriz técnica verificable y solicitud de revisión de Nicolás. V05 real correcto permite 18/24; las seis aceptaciones quedan pendientes y no se redefinen como pruebas automáticas.
+- [x] Typecheck/build, pruebas relevantes y revisión independiente del diff con defectos corregidos.
+- [x] Publicar PR acotado contra main `5b73e470` (Nicolás ya integró #37/#44 y los originales #46/#50), observar CI del HEAD final y evidencias reales, incluidas regresiones previas.
+- [x] Registrar matriz técnica verificable y solicitud de revisión de Nicolás. V05 real correcto permite 18/24; las seis aceptaciones quedan pendientes y no se redefinen como pruebas automáticas.
 
 ## Revisión focal
 
@@ -53,3 +53,7 @@ No datos privados en PUBLICA ni propiedades heredadas interpretadas como tipos v
 ## Actualización de base — 5 de noviembre
 
 La implementación backend inicial se preservó solo localmente en `93e1cdd`. Se adoptan las correcciones originales de Nicolás #46/#50 y su contrato `PasaporteDigitalVista`, sin sobrescribir sus pruebas PostgreSQL ni publicar cambios duplicados. Los checks de la lista se completarán con la evidencia del código final, no con los resultados históricos.
+
+## Evidencia de ejecución
+
+Código cce1957, PR #51, CI 42029557812 con cuatro jobs correctos, dos recorridos reales sobre web compilada. Detalle en HITOS_VICTOR_2026-11-05.md. Los cuatro archivos backend/contrato originales de Nicolás se adoptaron; solo el tipo cercano requirió dirección nullable. Revisión independiente: rechazo de históricos detectado y corregido con ocho regresiones; lookup visual protegido con Object.hasOwn. Las seis aceptaciones de Nicolás y los hallazgos ajenos #47–#50 siguen pendientes. Se comprobará también la CI del HEAD final tras este registro documental.
