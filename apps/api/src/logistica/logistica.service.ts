@@ -94,6 +94,16 @@ export interface VisorFlete {
   esTransportista: boolean;
 }
 
+/**
+ * La distancia guardada se calculó con la vista del solicitante: si es dueño de ambos
+ * extremos es exacta. Para cualquier otro visor se entrega redondeada a km enteros, para
+ * que varios fletes desde el mismo establo no permitan triangular su ubicación.
+ */
+function proyectarParaVisor(flete: SolicitudFlete, visor: VisorFlete): SolicitudFlete {
+  if (flete.solicitante_id === visor.userId) return flete;
+  return { ...flete, distancia_km: Math.round(Number(flete.distancia_km)) };
+}
+
 /** Parámetros: $1 usuario, $2 organización activa, $3 es transportista (boolean). */
 const SQL_FLETE_VISIBLE = `(
   f.solicitante_id::text = $1
@@ -588,7 +598,7 @@ export class LogisticaService {
     if (res.rows.length === 0) {
       throw new LogisticaError('Solicitud de flete no encontrada.', 404);
     }
-    return mapSolicitudRow(res.rows[0]);
+    return proyectarParaVisor(mapSolicitudRow(res.rows[0]), visor);
   }
 
   /**
@@ -599,22 +609,22 @@ export class LogisticaService {
     transportista_id?: string;
   }): Promise<SolicitudFlete[]> {
     const values: any[] = [visor.userId, visor.organizacionId ?? null, visor.esTransportista];
-    const conditions: string[] = [SQL_FLETE_VISIBLE.replace(/\bf\./g, '')];
+    const conditions: string[] = [SQL_FLETE_VISIBLE];
 
     if (filtros?.estado) {
       values.push(filtros.estado);
-      conditions.push(`estado = $${values.length}`);
+      conditions.push(`f.estado = $${values.length}`);
     }
 
     if (filtros?.transportista_id) {
       values.push(filtros.transportista_id);
-      conditions.push(`transportista_id = $${values.length}`);
+      conditions.push(`f.transportista_id = $${values.length}`);
     }
 
     const whereClause = `WHERE ${conditions.join(' AND ')}`;
-    const query = `SELECT * FROM fletes_solicitudes ${whereClause} ORDER BY created_at DESC LIMIT 200;`;
+    const query = `SELECT f.* FROM fletes_solicitudes f ${whereClause} ORDER BY f.created_at DESC LIMIT 200;`;
 
     const res = await this.pool.query(query, values);
-    return res.rows.map(mapSolicitudRow);
+    return res.rows.map((row) => proyectarParaVisor(mapSolicitudRow(row), visor));
   }
 }
