@@ -5,7 +5,8 @@ import WebSocket from 'ws';
 import { getPool, closePool, runInitialMigration } from './db.js';
 import { getRedisSubscriber, closeRedis } from './redis.js';
 import { SubastaWsHub } from './subastas/subastas.ws.js';
-import { MAX_TICKETS_VIGENTES_POR_USUARIO, consumirTicketWs, permiteAccessTokenEnUrl } from './subastas/ws-tickets.js';
+import { MAX_TICKETS_VIGENTES_POR_USUARIO, consumirTicketWs, permiteAccessTokenEnUrl, supervisarSesionWs } from './subastas/ws-tickets.js';
+import { EventEmitter } from 'node:events';
 import { buildApp } from './app.js';
 import { AuthService } from './auth/auth.service.js';
 
@@ -13,11 +14,13 @@ describe('Ticket efímero de un solo uso para el WebSocket de subastas', { concu
   const pool = getPool();
   const redisSubscriber = getRedisSubscriber();
   const wsHub = new SubastaWsHub(redisSubscriber);
-  const app = buildApp({ pool, redisSubscriber, wsHub });
+  // Revalidación y vida máxima cortas para poder probar revocación y expiración.
+  const app = buildApp({ pool, redisSubscriber, wsHub, wsRevalidacionMs: 100, wsDuracionMaxSesionMs: 2000 });
   const authService = new AuthService(pool);
   let base: string;
   let token: string;
   let userId: string;
+  let orgId: string;
   let loteId: string;
   let otroLoteId: string;
   const lotes: string[] = [];
@@ -70,6 +73,7 @@ describe('Ticket efímero de un solo uso para el WebSocket de subastas', { concu
     const email = `ws_ticket_${crypto.randomUUID().slice(0, 8)}@test.com`;
     const reg = await authService.register({ email, password: 'PasswordWs2026!', nombre: 'WS', organizacion_nombre: 'Org WS', rol_inicial: 'VENDEDOR' });
     userId = reg.user.id;
+    orgId = reg.activeContext.organizacion_id;
     token = (await app.inject({ method: 'POST', url: '/api/v1/auth/login', payload: { email, password: 'PasswordWs2026!' } })).json().access_token;
     loteId = await crearLote(token);
     otroLoteId = await crearLote(token);
@@ -178,6 +182,89 @@ describe('Ticket efímero de un solo uso para el WebSocket de subastas', { concu
     const r = await pedirTicket(loteId, sinOrg);
     assert.equal(r.statusCode, 403);
     assert.equal(r.json().code, 'SIN_CONTEXTO');
+  });
+
+  /** Abre el socket y lo deja abierto; `cierre` resuelve con "codigo:motivo". */
+  async function abrir(lote: string, query: string, headers: Record<string, string> = {}) {
+    const ws = new WebSocket(`${base}/api/v1/subastas/${lote}/live?${query}`, { headers });
+    const cierre = new Promise<string>((resolve) => ws.once('close', (c, m) => resolve(`${c}:${m.toString()}`)));
+    await new Promise<void>((resolve, reject) => {
+      ws.once('open', () => resolve());
+      ws.once('error', reject);
+    });
+    return { ws, cierre };
+  }
+
+  async function esperarSuscritos(lote: string, n: number) {
+    for (let i = 0; i < 100 && wsHub.getActiveSubscribersCount(lote) !== n; i++) await new Promise((r) => setTimeout(r, 20));
+    return wsHub.getActiveSubscribersCount(lote);
+  }
+
+  async function conContextoRevocado<T>(fn: () => Promise<T>): Promise<T> {
+    await pool.query('UPDATE user_organizaciones_roles SET is_active_context = FALSE WHERE user_id = $1', [userId]);
+    try {
+      return await fn();
+    } finally {
+      await pool.query(`UPDATE user_organizaciones_roles SET is_active_context = TRUE WHERE user_id = $1 AND rol = 'VENDEDOR'`, [userId]);
+    }
+  }
+
+  test('9. Bearer: firma válida pero membresía revocada antes del handshake → 1008', async () => {
+    const r = await conContextoRevocado(async () => {
+      const { cierre } = await abrir(loteId, '', { authorization: `Bearer ${token}` });
+      return cierre;
+    });
+    assert.match(r, /^1008:Sesión revocada/);
+    assert.equal(await esperarSuscritos(loteId, 0), 0);
+  });
+
+  test('10. Bearer: JWT sin organización activa → 1008 (igual que el ticket)', async () => {
+    const sinOrg = app.jwt.sign({ user_id: userId, email: 'x@test.com' } as any);
+    const { cierre } = await abrir(loteId, '', { authorization: `Bearer ${sinOrg}` });
+    assert.match(await cierre, /^1008:Se requiere un contexto/);
+  });
+
+  test('11. Revocación DURANTE la conexión: el socket se cierra y deja de estar suscrito', async () => {
+    const { ticket } = (await pedirTicket(loteId)).json();
+    const { cierre } = await abrir(loteId, `ticket=${encodeURIComponent(ticket)}`);
+    assert.equal(await esperarSuscritos(loteId, 1), 1);
+    const motivo = await conContextoRevocado(async () =>
+      Promise.race([cierre, new Promise<string>((r) => setTimeout(() => r('SIGUE_ABIERTO'), 1500))])
+    );
+    assert.match(motivo, /^1008:Sesión revocada/);
+    assert.equal(await esperarSuscritos(loteId, 0), 0, 'no conserva la suscripción');
+  });
+
+  test('12. La sesión expira: con ticket se cierra al cumplirse su vida máxima', async () => {
+    const { ticket } = (await pedirTicket(loteId)).json();
+    const inicio = Date.now();
+    const { cierre } = await abrir(loteId, `ticket=${encodeURIComponent(ticket)}`);
+    const motivo = await Promise.race([cierre, new Promise<string>((r) => setTimeout(() => r('SIGUE_ABIERTO'), 4000))]);
+    assert.match(motivo, /^1008:Sesión expirada/);
+    assert.ok(Date.now() - inicio >= 1500, 'no antes de su vida máxima');
+  });
+
+  test('13. Bearer: la conexión se cierra cuando vence el exp del JWT', async () => {
+    const corto = app.jwt.sign(
+      { user_id: userId, email: 'x@test.com', active_organization_id: orgId, active_role: 'VENDEDOR' } as any,
+      { expiresIn: 1 }
+    );
+    const { cierre } = await abrir(loteId, '', { authorization: `Bearer ${corto}` });
+    const motivo = await Promise.race([cierre, new Promise<string>((r) => setTimeout(() => r('SIGUE_ABIERTO'), 3000))]);
+    assert.match(motivo, /^1008:Sesión expirada/);
+  });
+
+  test('14. Si PostgreSQL no responde al revalidar, falla cerrado (1011) tras 2 intentos', async () => {
+    const cierres: string[] = [];
+    const emisor = new EventEmitter();
+    const socket = Object.assign(emisor, {
+      readyState: 1,
+      close(codigo: number, motivo: string) { cierres.push(`${codigo}:${motivo}`); emisor.emit('close'); }
+    });
+    const poolCaido = { query: async () => { throw new Error('ECONNREFUSED'); } } as any;
+    supervisarSesionWs(socket as any, { userId, organizacionId: orgId, rol: 'VENDEDOR', expiraEnMs: Date.now() + 60_000 }, poolCaido, 30);
+    await new Promise((r) => setTimeout(r, 150));
+    assert.deepEqual(cierres, ['1011:No se pudo verificar la sesión.']);
   });
 
   test('8. Sin ninguna credencial el socket se cierra con 1008', async () => {

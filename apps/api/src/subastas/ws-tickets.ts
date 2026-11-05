@@ -25,6 +25,32 @@ export interface ContextoTicket {
 export interface SesionWs {
   userId: string;
   organizacionId: string;
+  rol: string;
+  /** Instante (ms epoch) en que la conexión debe cerrarse y pedir credencial nueva. */
+  expiraEnMs: number;
+}
+
+/** Cada cuánto se vuelve a comprobar en PostgreSQL la membresía de un socket abierto. */
+export const REVALIDACION_WS_MS = 30_000;
+/** Vida máxima de una conexión abierta con ticket (igual que el JWT: 15 min). */
+export const DURACION_MAX_SESION_TICKET_MS = 15 * 60_000;
+/** Fallos seguidos al revalidar (BD caída) tras los que se cierra por no poder verificar. */
+export const MAX_FALLOS_REVALIDACION = 2;
+
+/**
+ * PostgreSQL es la autoridad de permisos: la membresía (organización + rol) debe
+ * existir y seguir siendo el contexto activo. Redis no interviene.
+ */
+export async function membresiaVigente(
+  pool: pg.Pool,
+  sesion: Pick<SesionWs, 'userId' | 'organizacionId' | 'rol'>
+): Promise<boolean> {
+  const res = await pool.query(
+    `SELECT 1 FROM user_organizaciones_roles
+     WHERE user_id = $1 AND organizacion_id = $2 AND rol = $3 AND is_active_context`,
+    [sesion.userId, sesion.organizacionId, sesion.rol]
+  );
+  return (res.rowCount ?? 0) > 0;
 }
 
 /** Probabilidad de limpiar tickets vencidos en cada emisión (no lo paga cada petición). */
@@ -71,22 +97,74 @@ export async function emitirTicketWs(
  */
 export async function consumirTicketWs(pool: pg.Pool, ticket: string, loteId: string): Promise<SesionWs | null> {
   if (ticket.length < 20 || ticket.length > 100) return null;
-  const res = await pool.query<{ user_id: string; organizacion_id: string }>(
+  const res = await pool.query<{ user_id: string; organizacion_id: string; rol: string }>(
     `UPDATE ws_tickets t SET usado_en = clock_timestamp()
      WHERE t.hash = $1 AND t.lote_id = $2 AND t.usado_en IS NULL AND t.expira_en > clock_timestamp()
        AND EXISTS (
          SELECT 1 FROM user_organizaciones_roles uor
          WHERE uor.user_id = t.user_id AND uor.organizacion_id = t.organizacion_id
            AND uor.rol = t.rol AND uor.is_active_context)
-     RETURNING t.user_id, t.organizacion_id`,
+     RETURNING t.user_id, t.organizacion_id, t.rol`,
     [hashTicket(ticket), loteId]
   );
   const fila = res.rows[0];
-  return fila ? { userId: fila.user_id, organizacionId: fila.organizacion_id } : null;
+  return fila
+    ? { userId: fila.user_id, organizacionId: fila.organizacion_id, rol: fila.rol, expiraEnMs: Date.now() + DURACION_MAX_SESION_TICKET_MS }
+    : null;
 }
 
 /** Identidad asociada a cada socket abierto (para auditoría o eventos por usuario). */
-export const sesionesWs = new WeakMap<object, SesionWs | { userId: string; organizacionId?: string }>();
+export const sesionesWs = new WeakMap<object, SesionWs>();
+
+interface SocketSupervisable {
+  readonly readyState: number;
+  close(code?: number, reason?: string): void;
+  once(evento: 'close', fn: () => void): unknown;
+}
+
+/**
+ * Mantiene vigente la autorización DURANTE la conexión:
+ *  - cierra al expirar la sesión (exp del JWT o 15 min con ticket);
+ *  - revalida la membresía en PostgreSQL cada `revalidacionMs` y cierra si se revocó;
+ *  - si la BD no responde `MAX_FALLOS_REVALIDACION` veces seguidas, cierra (falla cerrado).
+ * Cada instancia revalida sus propios sockets contra PostgreSQL: no depende de un aviso
+ * entre instancias que podría perderse.
+ */
+export function supervisarSesionWs(
+  socket: SocketSupervisable,
+  sesion: SesionWs,
+  pool: pg.Pool,
+  revalidacionMs: number = REVALIDACION_WS_MS
+): void {
+  let fallos = 0;
+  let cerrado = false;
+  const cerrar = (codigo: number, motivo: string) => {
+    if (cerrado) return;
+    cerrado = true;
+    if (socket.readyState === 0 || socket.readyState === 1) socket.close(codigo, motivo);
+  };
+  const timerExpiracion = setTimeout(
+    () => cerrar(1008, 'Sesión expirada; reconecte con un ticket nuevo.'),
+    Math.max(0, sesion.expiraEnMs - Date.now())
+  );
+  const timerRevalidacion = setInterval(async () => {
+    try {
+      const vigente = await membresiaVigente(pool, sesion);
+      fallos = 0;
+      if (!vigente) cerrar(1008, 'Sesión revocada.');
+    } catch {
+      fallos += 1;
+      if (fallos >= MAX_FALLOS_REVALIDACION) cerrar(1011, 'No se pudo verificar la sesión.');
+    }
+  }, revalidacionMs);
+  timerExpiracion.unref?.();
+  timerRevalidacion.unref?.();
+  socket.once('close', () => {
+    cerrado = true;
+    clearTimeout(timerExpiracion);
+    clearInterval(timerRevalidacion);
+  });
+}
 
 /**
  * ?access_token= queda solo por compatibilidad mientras la web migra al ticket.
