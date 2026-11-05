@@ -5,7 +5,7 @@ import type pg from 'pg';
 import type { JwtUserPayload } from '../auth/types.js';
 import { getRedisSubscriber } from '../redis.js';
 import { createAuthMiddleware } from '../auth/auth.middleware.js';
-import { consumirTicketWs, emitirTicketWs, permiteAccessTokenEnUrl, TicketWsError } from './ws-tickets.js';
+import { consumirTicketWs, emitirTicketWs, permiteAccessTokenEnUrl, sesionesWs, TicketWsError } from './ws-tickets.js';
 
 export interface SubastasWsRoutesOptions {
   subscriber?: Redis;
@@ -187,7 +187,12 @@ export const subastasWsRoutes: FastifyPluginAsync<SubastasWsRoutesOptions> = asy
         return reply.status(404).send({ statusCode: 404, error: 'Not Found', code: 'LOTE_NO_ENCONTRADO', message: 'Lote de subasta no encontrado.' });
       }
       try {
-        const emitido = await emitirTicketWs(options.pool, request.userSession!.userId, id);
+        const s = request.userSession!;
+        const emitido = await emitirTicketWs(
+          options.pool,
+          { userId: s.userId, organizacionId: s.activeOrganizationId, rol: s.activeRole },
+          id
+        );
         reply.header('Cache-Control', 'no-store');
         return reply.status(201).send(emitido);
       } catch (err) {
@@ -216,11 +221,12 @@ export const subastasWsRoutes: FastifyPluginAsync<SubastasWsRoutesOptions> = asy
       //  3. ?access_token= (OBSOLETO: el JWT queda en la URL; solo si está permitido).
       const { ticket, access_token: tokenEnUrl } = request.query;
       if (ticket !== undefined) {
-        const userId = await consumirTicketWs(options.pool, ticket, id);
-        if (!userId) {
+        const sesion = await consumirTicketWs(options.pool, ticket, id);
+        if (!sesion) {
           socket.close(1008, 'Ticket inválido, vencido o ya usado.');
           return;
         }
+        sesionesWs.set(socket, sesion);
       } else {
         const header = request.headers.authorization;
         let token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : undefined;
@@ -235,6 +241,7 @@ export const subastasWsRoutes: FastifyPluginAsync<SubastasWsRoutesOptions> = asy
         try {
           const decoded = token ? fastify.jwt.verify<JwtUserPayload>(token) : null;
           if (!decoded?.user_id) throw new Error('sin sesión');
+          sesionesWs.set(socket, { userId: decoded.user_id, organizacionId: decoded.active_organization_id });
         } catch {
           socket.close(1008, 'Sesión requerida.');
           return;

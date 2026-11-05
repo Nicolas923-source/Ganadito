@@ -125,7 +125,8 @@ Respuesta `201`:
 **Ticket de conexión [WS-TICKET].** Un navegador no puede enviar `Authorization` en el upgrade, y antes el JWT viajaba en la URL. Ahora el cliente sigue dos pasos:
 1. `POST /subastas/:id/live/ticket` con `Authorization: Bearer <access_token>`:
    - `201` `{ ticket, expira_en_segundos: 30 }`, con `Cache-Control: no-store`;
-   - `401` sin sesión, `404` si el lote no existe, `429 DEMASIADOS_TICKETS` con más de 20 tickets sin usar.
+   - `401` sin sesión, `403 SIN_CONTEXTO` sin organización activa, `404` si el lote no existe, `429 DEMASIADOS_TICKETS` con más de 20 tickets sin usar.
+   - El ticket queda ligado a la organización y el rol activos. Al consumirlo se **revalida** en PostgreSQL que esa membresía siga activa.
 2. Abrir **de inmediato** `GET /subastas/:id/live?ticket=<ticket>`. El ticket:
    - es de **un solo uso**, así que cada reconexión necesita uno nuevo;
    - vale **30 s**;

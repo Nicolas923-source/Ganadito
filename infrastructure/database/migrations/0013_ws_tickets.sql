@@ -13,6 +13,9 @@
 CREATE TABLE IF NOT EXISTS ws_tickets (
   hash CHAR(64) PRIMARY KEY,
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  -- Contexto con el que se emitió: al consumir se revalida que la membresía siga activa.
+  organizacion_id UUID NOT NULL REFERENCES organizaciones(id) ON DELETE CASCADE,
+  rol VARCHAR(50) NOT NULL,
   lote_id UUID NOT NULL REFERENCES lotes_subasta(id) ON DELETE CASCADE,
   expira_en TIMESTAMPTZ NOT NULL,
   usado_en TIMESTAMPTZ,

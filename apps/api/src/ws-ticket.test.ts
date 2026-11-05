@@ -127,7 +127,7 @@ describe('Ticket efímero de un solo uso para el WebSocket de subastas', { concu
   test('5. Dos conexiones simultáneas con el mismo ticket: exactamente una entra', async () => {
     const { ticket } = (await pedirTicket(loteId)).json();
     const consumos = await Promise.all(Array.from({ length: 5 }, () => consumirTicketWs(pool, ticket, loteId)));
-    assert.deepEqual(consumos.filter((u) => u !== null), [userId]);
+    assert.deepEqual(consumos.filter((u) => u !== null).map((u) => u!.userId), [userId]);
   });
 
   test('6. Tope de tickets vigentes por usuario: 429 al superarlo', async () => {
@@ -154,6 +154,30 @@ describe('Ticket efímero de un solo uso para el WebSocket de subastas', { concu
     assert.equal(permiteAccessTokenEnUrl({ NODE_ENV: 'production' }), false);
     assert.equal(permiteAccessTokenEnUrl({ NODE_ENV: 'production', WS_PERMITIR_ACCESS_TOKEN_EN_URL: 'true' }), true);
     assert.equal(permiteAccessTokenEnUrl({ NODE_ENV: 'development' }), true);
+  });
+
+  test('7b. Membresía revocada después de emitir: el ticket ya no abre el socket', async () => {
+    const { ticket } = (await pedirTicket(loteId)).json();
+    await pool.query('UPDATE user_organizaciones_roles SET is_active_context = FALSE WHERE user_id = $1', [userId]);
+    try {
+      assert.match(await conectar(loteId, `ticket=${encodeURIComponent(ticket)}`), /^1008:Ticket inválido/);
+      // El token sin contexto activo ya no obtiene tickets.
+      const sinContexto = await pedirTicket(loteId);
+      assert.ok([401, 403].includes(sinContexto.statusCode), sinContexto.body);
+    } finally {
+      await pool.query(
+        `UPDATE user_organizaciones_roles SET is_active_context = TRUE WHERE user_id = $1 AND rol = 'VENDEDOR'`,
+        [userId]
+      );
+    }
+    assert.equal((await pedirTicket(loteId)).statusCode, 201);
+  });
+
+  test('7c. Un JWT sin organización activa no obtiene ticket (403 SIN_CONTEXTO)', async () => {
+    const sinOrg = app.jwt.sign({ user_id: userId, email: 'x@test.com' } as any);
+    const r = await pedirTicket(loteId, sinOrg);
+    assert.equal(r.statusCode, 403);
+    assert.equal(r.json().code, 'SIN_CONTEXTO');
   });
 
   test('8. Sin ninguna credencial el socket se cierra con 1008', async () => {
