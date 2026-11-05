@@ -49,3 +49,14 @@ Con la misma autorización de Nicolás («crea la primera versión del MVP»), e
 - `apps/web/src/routes/subastas/+page.svelte` y el componente nuevo `apps/web/src/lib/components/subastas/CatalogoLotes.svelte`: catálogo, «Mis lotes» y detalle del lote en el formulario.
 - `tests/e2e/{fixtures,auctions.spec,confirmation.spec}.ts` y `tests/e2e/real/auction-order.spec.ts`: la etiqueta nueva del precio y el e2e del catálogo.
 - `README.md`: el MVP y cómo levantarlo en local.
+
+## Ampliación: rediseño visual del MVP (2026-11-05)
+
+Nicolás pidió mejorar el diseño de la web del MVP, tomando como inspiración el prototipo de distribuidores y sin emojis. Con esa orden, el PR de diseño toca estas rutas de Víctor:
+- `apps/web/src/app.css` y `apps/web/src/app.html`: tema claro con tokens semánticos y la tipografía Archivo.
+- `apps/web/src/routes/+layout.svelte` y `routes/+page.svelte`: encabezado con la ruta activa, una portada con la pizarra de próximos cierres y los accesos de «¿Qué quieres hacer hoy?».
+- `apps/web/src/lib/components/inicio/PizarraInicio.svelte`: componente nuevo que lee `GET /subastas` y no usa datos de ejemplo.
+- `CatalogoLotes.svelte`, `subastas/+page.svelte` y `EstadoConexionWs.svelte`: tarjetas de lote, filtro segmentado e indicador de conexión.
+- En el resto de componentes, las clases de color oscuras (slate/emerald) pasan a los tokens. No cambia ninguna lógica, contrato ni texto que validan las pruebas.
+
+**Condición de fin:** el PR se une con la CI en verde y las rutas vuelven a Víctor.

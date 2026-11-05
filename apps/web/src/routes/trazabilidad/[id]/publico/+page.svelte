@@ -54,10 +54,10 @@
 
 <svelte:head><title>Pasaporte bovino público | Ganadito</title><meta name="robots" content="noindex" /></svelte:head>
 <div class="max-w-6xl mx-auto w-full px-4 py-8 space-y-6">
-  <div><h1 class="text-3xl font-bold text-white">Pasaporte bovino público</h1><p class="text-sm text-slate-400 mt-2 break-all">Identificador: {identificador}</p></div>
-  {#if cargando}<p role="status" class="rounded-xl bg-slate-900 p-6 text-slate-400">Consultando pasaporte…</p>
-  {:else if errorConsulta}<p role="alert" class="rounded-xl border border-rose-800 bg-rose-950/40 p-5 text-rose-200">{errorConsulta}</p>
+  <div><h1 class="text-3xl font-bold text-tinta">Pasaporte bovino público</h1><p class="text-sm text-apagado mt-2 break-all">Identificador: {identificador}</p></div>
+  {#if cargando}<p role="status" class="rounded-xl bg-superficie p-6 text-apagado">Consultando pasaporte…</p>
+  {:else if errorConsulta}<p role="alert" class="rounded-xl border border-alerta-linea bg-alerta-fondo/40 p-5 text-alerta">{errorConsulta}</p>
   {:else if pasaporte}
     <VistaPasaporte {pasaporte} {verificacion} {auditando} {errorAuditoria} onVerificar={() => void auditar()} />
-  {:else}<p role="status" class="text-slate-400">No hay un pasaporte disponible para esta consulta.</p>{/if}
+  {:else}<p role="status" class="text-apagado">No hay un pasaporte disponible para esta consulta.</p>{/if}
 </div>

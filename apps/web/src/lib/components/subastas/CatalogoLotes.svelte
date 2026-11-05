@@ -58,33 +58,56 @@
   const fecha = (s: string) => new Date(s).toLocaleString('es-PE', { timeZone: 'America/Lima', dateStyle: 'medium', timeStyle: 'short' });
 </script>
 
-<section class="rounded-2xl border border-slate-700 bg-slate-900 p-6 space-y-4" aria-label="Catálogo de lotes">
-  <div class="flex flex-wrap items-center justify-between gap-3">
-    <h2 class="text-xl font-bold">Catálogo de lotes</h2>
-    <div class="flex gap-2" role="group" aria-label="Filtrar catálogo">
-      <button type="button" class="rounded-lg px-3 py-1 text-sm border {vista === 'publicos' ? 'border-emerald-500 text-emerald-300' : 'border-slate-600'}" aria-pressed={vista === 'publicos'} onclick={() => (vista = 'publicos')}>Lotes activos</button>
-      {#if puedeVerMios}<button type="button" class="rounded-lg px-3 py-1 text-sm border {vista === 'mios' ? 'border-emerald-500 text-emerald-300' : 'border-slate-600'}" aria-pressed={vista === 'mios'} onclick={() => (vista = 'mios')}>Mis lotes</button>{/if}
+<section class="catalogo space-y-4" aria-label="Catálogo de lotes">
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h2 class="titulo">Catálogo de lotes</h2>
+      <p class="text-sm text-apagado m-0">La puja es por el <strong class="text-tinta">precio total del lote</strong>; no se liquida por kilo. El peso estimado por IA es orientativo y no vinculante.</p>
+    </div>
+    <div class="segmentos" role="group" aria-label="Filtrar catálogo">
+      <button type="button" aria-pressed={vista === 'publicos'} onclick={() => (vista = 'publicos')}>Lotes activos</button>
+      {#if puedeVerMios}<button type="button" aria-pressed={vista === 'mios'} onclick={() => (vista = 'mios')}>Mis lotes</button>{/if}
     </div>
   </div>
-  <p class="text-sm text-slate-400">La puja es por el <strong>precio total del lote</strong>; no se liquida por kilo. El peso estimado por IA es orientativo y no vinculante.</p>
-  {#if error}<p role="alert" class="rounded-lg border border-rose-600 p-3 text-rose-300">{error} <button type="button" class="underline" onclick={() => void cargar(true)}>Reintentar</button></p>{/if}
-  {#if !cargando && !error && lotes.length === 0}<p role="status" class="text-slate-400">{vista === 'mios' ? 'Tu organización todavía no publicó lotes.' : 'No hay lotes activos en este momento.'}</p>{/if}
-  <ul class="grid sm:grid-cols-2 gap-4">
+  {#if error}<p role="alert" class="error">{error} <button type="button" class="secondary ml-2 px-3 py-1 text-sm" onclick={() => void cargar(true)}>Reintentar</button></p>{/if}
+  {#if !cargando && !error && lotes.length === 0}<p role="status" class="vacio">{vista === 'mios' ? 'Tu organización todavía no publicó lotes.' : 'No hay lotes activos en este momento.'} <a href="#publicar">Publicar un lote</a></p>{/if}
+  <ul class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 m-0 p-0 list-none">
     {#each lotes as lote (lote.id)}
-      <li class="rounded-xl border border-slate-700 bg-slate-950 p-4 space-y-2">
-        <div class="flex justify-between gap-2"><a class="font-bold text-emerald-300 underline break-all" href={`/subastas/${encodeURIComponent(lote.id)}`}>{lote.codigo_lote}</a><span class="text-xs rounded px-2 py-0.5 border border-slate-600">{lote.estado}{lote.es_abierta ? ' · abierto' : ''}</span></div>
-        <p class="text-sm text-slate-300">{[lote.cantidad_animales ? `${lote.cantidad_animales} animales` : null, lote.categoria, lote.raza].filter(Boolean).join(' · ') || 'Sin detalle del lote'}</p>
-        {#if lote.descripcion}<p class="text-sm text-slate-400">{lote.descripcion}</p>{/if}
-        <dl class="grid grid-cols-2 gap-2 text-sm">
-          <div><dt class="text-slate-500">Precio actual (lote)</dt><dd class="font-semibold">{fmt(lote.precio_actual)}</dd></div>
-          <div><dt class="text-slate-500">Pujas</dt><dd>{lote.total_pujas}</dd></div>
-          <div><dt class="text-slate-500">Cierre</dt><dd>{fecha(lote.fecha_cierre)}</dd></div>
-          {#if lote.peso_estimado_total_kg !== null}<div><dt class="text-slate-500">Peso estimado (IA, orientativo)</dt><dd>{Math.round(lote.peso_estimado_total_kg)} kg</dd></div>{/if}
-          {#if lote.origen}<div class="col-span-2"><dt class="text-slate-500">Origen</dt><dd>Ubigeo {lote.origen.ubigeo}{lote.origen.ubicacion_aproximada ? ' · ubicación aproximada' : ''}</dd></div>{/if}
+      <li class="tarjeta">
+        <div class="flex items-start justify-between gap-2">
+          <a class="codigo break-all" href={`/subastas/${encodeURIComponent(lote.id)}`}>{lote.codigo_lote}</a>
+          <span class="estado" data-abierta={lote.es_abierta}>{lote.es_abierta ? 'Abierta' : lote.estado.toLowerCase()}</span>
+        </div>
+        <p class="text-sm text-tinta-2 m-0">{[lote.cantidad_animales ? `${lote.cantidad_animales} animales` : null, lote.categoria, lote.raza].filter(Boolean).join(' · ') || 'Sin detalle del lote'}</p>
+        {#if lote.descripcion}<p class="text-sm text-apagado m-0">{lote.descripcion}</p>{/if}
+        <div class="precio"><span class="text-xs text-apagado">Precio actual del lote</span><span class="cifra text-2xl text-tinta">{fmt(lote.precio_actual)}</span></div>
+        <dl class="datos">
+          <div><dt>Pujas</dt><dd class="cifra">{lote.total_pujas}</dd></div>
+          <div><dt>Cierre</dt><dd>{fecha(lote.fecha_cierre)}</dd></div>
+          {#if lote.peso_estimado_total_kg !== null}<div><dt>Peso estimado (IA, orientativo)</dt><dd class="cifra">{Math.round(lote.peso_estimado_total_kg)} kg</dd></div>{/if}
+          {#if lote.origen}<div><dt>Origen</dt><dd>Ubigeo {lote.origen.ubigeo}{lote.origen.ubicacion_aproximada ? ', ubicación aproximada' : ''}</dd></div>{/if}
         </dl>
       </li>
     {/each}
   </ul>
-  {#if cargando}<p role="status" class="text-slate-400">Consultando lotes…</p>{/if}
-  {#if cursor && !cargando}<button type="button" class="rounded-lg border border-slate-600 px-4 py-2" onclick={() => void cargar(false)}>Ver más lotes</button>{/if}
+  {#if cargando}<p role="status" class="text-apagado">Consultando lotes…</p>{/if}
+  {#if cursor && !cargando}<button type="button" class="secondary" onclick={() => void cargar(false)}>Ver más lotes</button>{/if}
 </section>
+
+<style>
+  .titulo { font-size: 1.5rem; margin: 0 0 .35rem; }
+  .segmentos { display: inline-flex; padding: .2rem; background: var(--color-campo-2); border-radius: .6rem; gap: .2rem; }
+  .segmentos button { background: transparent; border-color: transparent; color: var(--color-tinta-2); padding: .4rem .9rem; font-size: .9rem; border-radius: .45rem; }
+  .segmentos button:hover:not(:disabled) { background: #d9e1d4; border-color: transparent; color: var(--color-tinta); }
+  .segmentos button[aria-pressed='true'] { background: var(--color-superficie); color: var(--color-pasto-osc); box-shadow: 0 1px 2px rgba(20, 34, 25, .12); }
+  .vacio { padding: 1.25rem; border: 1px dashed #b9c4b4; border-radius: .75rem; color: var(--color-apagado); margin: 0; }
+  .tarjeta { display: grid; gap: .6rem; align-content: start; background: var(--color-superficie); border: 1px solid var(--color-linea); border-radius: .75rem; padding: 1.1rem 1.15rem; }
+  .codigo { font-weight: 720; font-stretch: 110%; color: var(--color-tinta); text-decoration: none; }
+  .codigo:hover { color: var(--color-pasto); text-decoration: underline; }
+  .estado { flex: none; font-size: .75rem; font-weight: 620; padding: .15rem .55rem; border-radius: 999px; background: var(--color-campo-2); color: var(--color-apagado); }
+  .estado[data-abierta='true'] { background: var(--color-pasto-claro); color: var(--color-pasto-osc); }
+  .precio { display: grid; padding-top: .55rem; border-top: 1px solid var(--color-linea); }
+  .datos { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem 1rem; margin: 0; font-size: .875rem; }
+  .datos dt { color: var(--color-apagado); font-size: .78rem; }
+  .datos dd { margin: 0; color: var(--color-tinta-2); }
+</style>

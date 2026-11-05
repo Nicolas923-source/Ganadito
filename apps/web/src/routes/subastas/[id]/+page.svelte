@@ -228,29 +228,29 @@
 <svelte:head><title>Subasta | Ganadito</title></svelte:head>
 <div class="max-w-6xl mx-auto w-full px-4 py-8 space-y-6">
   <div class="flex flex-wrap justify-between items-center gap-4">
-    <div><a href="/subastas" class="text-sm text-emerald-300 underline">Volver a lotes</a><h1 class="text-3xl font-bold mt-2">Sala de subasta</h1></div>
+    <div><a href="/subastas" class="text-sm text-pasto underline">Volver a lotes</a><h1 class="text-3xl font-bold mt-2">Sala de subasta</h1></div>
     <EstadoConexionWs estado={connection} reintento={retries} />
   </div>
-  <p class="text-sm text-slate-400 break-all">Identificador: {lotId}</p>
+  <p class="text-sm text-apagado break-all">Identificador: {lotId}</p>
   {#if loading}<p role="status">Consultando el lote solicitado…</p>{/if}
   {#if error}
-    <div role="alert" class="rounded-xl border border-rose-600 bg-rose-950/40 p-4 space-y-2"><p>{error}</p><button type="button" onclick={() => refresh()} class="underline">Reintentar consulta</button></div>
+    <div role="alert" class="rounded-xl border border-alerta-linea bg-alerta-fondo/40 p-4 space-y-2"><p>{error}</p><button type="button" onclick={() => refresh()} class="underline">Reintentar consulta</button></div>
   {/if}
   {#if snapshot}
     <div class="grid lg:grid-cols-2 gap-6">
-      <section class="rounded-2xl border border-slate-700 bg-slate-900 p-6 space-y-5" aria-label="Estado oficial del lote">
-        <div class="flex justify-between gap-4"><h2 class="text-xl font-bold">{snapshot.codigo_lote}</h2><span class="text-emerald-300">{snapshot.estado}</span></div>
+      <section class="rounded-2xl border border-linea bg-superficie p-6 space-y-5" aria-label="Estado oficial del lote">
+        <div class="flex justify-between gap-4"><h2 class="text-xl font-bold">{snapshot.codigo_lote}</h2><span class="text-pasto">{snapshot.estado}</span></div>
         <dl class="grid grid-cols-2 gap-5 text-sm">
-          <div><dt class="text-slate-400">Precio actual</dt><dd class="text-2xl font-bold">S/ {snapshot.precio_actual.toFixed(2)}</dd></div>
-          <div><dt class="text-slate-400">Precio base</dt><dd>S/ {snapshot.precio_base.toFixed(2)}</dd></div>
-          <div><dt class="text-slate-400">Incremento mínimo</dt><dd>S/ {snapshot.incremento_minimo.toFixed(2)}</dd></div>
-          <div><dt class="text-slate-400">Pujas registradas</dt><dd>{snapshot.secuencia_maxima}</dd></div>
+          <div><dt class="text-apagado">Precio actual</dt><dd class="text-2xl font-bold">S/ {snapshot.precio_actual.toFixed(2)}</dd></div>
+          <div><dt class="text-apagado">Precio base</dt><dd>S/ {snapshot.precio_base.toFixed(2)}</dd></div>
+          <div><dt class="text-apagado">Incremento mínimo</dt><dd>S/ {snapshot.incremento_minimo.toFixed(2)}</dd></div>
+          <div><dt class="text-apagado">Pujas registradas</dt><dd>{snapshot.secuencia_maxima}</dd></div>
         </dl>
-        <div><p class="text-slate-400 text-sm">Tiempo orientativo restante</p><p class="font-mono text-3xl">{Math.floor(seconds / 3600).toString().padStart(2, '0')}:{Math.floor(seconds % 3600 / 60).toString().padStart(2, '0')}:{(seconds % 60).toString().padStart(2, '0')}</p></div>
-        {#if seconds === 0 && snapshot.estado === 'ACTIVO'}<p role="status" class="text-amber-200">Esperando la confirmación del cierre por el servidor.</p>{/if}
-        <p class="text-xs text-slate-400">Última consulta: {lastUpdated}. Versión {snapshot.version}. El reloj no adjudica el lote.</p>
+        <div><p class="text-apagado text-sm">Tiempo orientativo restante</p><p class="font-mono text-3xl">{Math.floor(seconds / 3600).toString().padStart(2, '0')}:{Math.floor(seconds % 3600 / 60).toString().padStart(2, '0')}:{(seconds % 60).toString().padStart(2, '0')}</p></div>
+        {#if seconds === 0 && snapshot.estado === 'ACTIVO'}<p role="status" class="text-aviso">Esperando la confirmación del cierre por el servidor.</p>{/if}
+        <p class="text-xs text-apagado">Última consulta: {lastUpdated}. Versión {snapshot.version}. El reloj no adjudica el lote.</p>
         {#if ['ADJUDICADO', 'CERRADO', 'DESIERTO', 'CANCELADO'].includes(snapshot.estado)}
-          <div class="border-t border-slate-700 pt-4 space-y-2"><p>Estado de cierre confirmado: {snapshot.estado}.</p><a href={`/ordenes?lote_id=${encodeURIComponent(lotId)}`} class="text-emerald-300 underline">Consultar información de órdenes</a><p class="text-sm text-slate-400">Los pagos permanecen deshabilitados.</p></div>
+          <div class="border-t border-linea pt-4 space-y-2"><p>Estado de cierre confirmado: {snapshot.estado}.</p><a href={`/ordenes?lote_id=${encodeURIComponent(lotId)}`} class="text-pasto underline">Consultar información de órdenes</a><p class="text-sm text-apagado">Los pagos permanecen deshabilitados.</p></div>
         {/if}
       </section>
       {#key contextKey}
@@ -259,10 +259,10 @@
         </fieldset>
       {/key}
     </div>
-    <section class="rounded-2xl border border-slate-700 bg-slate-900 p-5 space-y-3">
+    <section class="rounded-2xl border border-linea bg-superficie p-5 space-y-3">
       <h2 class="text-lg font-bold">Pujas recibidas durante esta visita</h2>
-      <p class="text-sm text-slate-400">La consulta oficial informa {snapshot.secuencia_maxima} pujas en total. El historial anterior no está disponible en esta pantalla.</p>
-      {#if bids.length === 0}<p class="text-slate-300">Todavía no se recibieron pujas en esta visita.</p>{:else}<ul class="space-y-2">{#each bids as bid (bid.puja_id)}<li class="flex justify-between border-t border-slate-800 pt-2"><span>Secuencia {bid.secuencia}</span><span>S/ {bid.monto.toFixed(2)}</span></li>{/each}</ul>{/if}
+      <p class="text-sm text-apagado">La consulta oficial informa {snapshot.secuencia_maxima} pujas en total. El historial anterior no está disponible en esta pantalla.</p>
+      {#if bids.length === 0}<p class="text-tinta-2">Todavía no se recibieron pujas en esta visita.</p>{:else}<ul class="space-y-2">{#each bids as bid (bid.puja_id)}<li class="flex justify-between border-t border-linea pt-2"><span>Secuencia {bid.secuencia}</span><span>S/ {bid.monto.toFixed(2)}</span></li>{/each}</ul>{/if}
     </section>
   {:else if !loading && !error}<p>No hay información del lote solicitado.</p>{/if}
 </div>
