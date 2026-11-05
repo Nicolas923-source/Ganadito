@@ -1,8 +1,10 @@
 <script lang="ts">
-  import type { EventoTrazabilidad, TipoEventoTrazabilidad } from '@ganadito/contracts';
+  import type { TipoEventoTrazabilidad } from '@ganadito/contracts';
+  import type { EventoLectura } from '#lib/trazabilidad/pasaporte.ts';
 
   // Historic names are read literally; the business enum still governs writes.
-  export type EventoLectura = Omit<EventoTrazabilidad, 'event_type'> & { readonly event_type: string };
+  // Public events (vista PUBLICA) arrive without author and without chain hashes.
+  export type { EventoLectura };
 
   interface Props {
     eventos: readonly EventoLectura[];
@@ -138,7 +140,7 @@
                     </span>
                   </div>
                   <span class="text-[11px] text-slate-400">
-                    Autor: <code class="font-mono text-slate-300">{evento.autor_id ? `USR-${evento.autor_id.slice(0, 8)}` : 'Sistema'}</code>
+                    {#if evento.autor_id}Autor: <code class="font-mono text-slate-300">USR-{evento.autor_id.slice(0, 8)}</code>{:else}<span>Autor reservado</span>{/if}
                   </span>
                 </div>
               </div>
@@ -170,13 +172,17 @@
               </div>
             {/if}
 
-            <!-- Auditoría de Eslabón Criptográfico (prev_hash y current_hash) -->
+            <!-- Auditoría de Eslabón Criptográfico (prev_hash y current_hash): solo en la vista
+                 COMPLETA. La vista PUBLICA no trae hashes; su integridad la confirma /verificar. -->
+            {#if evento.prev_hash && evento.current_hash}
+            {@const prevHash = evento.prev_hash}
+            {@const currentHash = evento.current_hash}
             <div class="bg-slate-950/60 p-3 rounded-xl border border-slate-800/50 space-y-1.5 text-[11px]">
               <!-- Hash Previo -->
               <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                 <span class="text-slate-500 font-medium">Hash Previo (Parent SHA-256):</span>
-                <span class="font-mono text-slate-400 text-[10px] break-all sm:text-right" title={evento.prev_hash}>
-                  {evento.prev_hash === '0'.repeat(64) ? '0000000000000000... (Génesis)' : `${evento.prev_hash.slice(0, 16)}...${evento.prev_hash.slice(-16)}`}
+                <span class="font-mono text-slate-400 text-[10px] break-all sm:text-right" title={prevHash}>
+                  {prevHash === '0'.repeat(64) ? '0000000000000000... (Génesis)' : `${prevHash.slice(0, 16)}...${prevHash.slice(-16)}`}
                 </span>
               </div>
 
@@ -186,20 +192,21 @@
                   <span>🔒 Hash Bloque #{evento.secuencia}:</span>
                 </span>
                 <div class="flex items-center gap-2 self-end sm:self-auto">
-                  <span class="font-mono font-bold text-emerald-300 text-[10px] break-all" title={evento.current_hash}>
-                    {evento.current_hash.slice(0, 18)}...{evento.current_hash.slice(-18)}
+                  <span class="font-mono font-bold text-emerald-300 text-[10px] break-all" title={currentHash}>
+                    {currentHash.slice(0, 18)}...{currentHash.slice(-18)}
                   </span>
                   <button
                     type="button"
-                    onclick={() => copiarHash(evento.current_hash)}
+                    onclick={() => copiarHash(currentHash)}
                     class="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 transition-colors shrink-0"
                     title="Copiar hash completo"
                   >
-                    {hashCopiado === evento.current_hash ? '✓ Copiado' : 'Copiar'}
+                    {hashCopiado === currentHash ? '✓ Copiado' : 'Copiar'}
                   </button>
                 </div>
               </div>
             </div>
+            {/if}
           </div>
         </div>
       {/each}

@@ -287,16 +287,53 @@ test('an uncertain bid cannot be retried while the reconnection snapshot is pend
   } finally { releaseRecovery?.(); }
 });
 
-test('the opt-in live transport sends only the current session token and stops reconnecting on policy rejection', async ({ page }) => {
+test('the live transport opens with a one-time ticket (never the JWT) and stops reconnecting when the session is revoked', async ({ page }) => {
   await page.clock.install();
   const token = await installSession(page);
   const { sockets } = await room(page, () => snapshot());
   await expect(page.getByRole('button', { name: 'Confirmar puja' })).toBeEnabled();
-  expect(new URL(sockets.at(-1)!.url()).searchParams.get('access_token')).toBe(token);
-  await sockets.at(-1)!.close({ code: 1008, reason: 'Acceso rechazado' });
+  const url = new URL(sockets.at(-1)!.url());
+  expect(url.searchParams.get('ticket')).toMatch(/^ticket-fixture-0001-/);
+  expect(url.searchParams.has('access_token')).toBe(false);
+  expect(url.toString()).not.toContain(token);
+  await sockets.at(-1)!.close({ code: 1008, reason: 'Sesión revocada.' });
   await expect(page.getByRole('button', { name: 'Confirmar puja' })).toBeDisabled();
   await page.clock.runFor(31000);
   expect(sockets).toHaveLength(1);
+});
+
+test('an expired live session reconnects at once with a NEW ticket', async ({ page }) => {
+  await installSession(page);
+  const { sockets } = await room(page, () => snapshot());
+  await expect(page.getByRole('button', { name: 'Confirmar puja' })).toBeEnabled();
+  const first = new URL(sockets.at(-1)!.url()).searchParams.get('ticket');
+  await sockets.at(-1)!.close({ code: 1008, reason: 'Sesión expirada; reconecte con un ticket nuevo.' });
+  await expect.poll(() => sockets.length).toBe(2);
+  const second = new URL(sockets.at(-1)!.url()).searchParams.get('ticket');
+  expect(second).not.toBe(first);
+  await expect(page.getByRole('status').filter({ hasText: 'En Vivo' })).toBeVisible();
+});
+
+test('a rejected ticket is retried once with a new one, then the room gives up', async ({ page }) => {
+  await page.clock.install();
+  await installSession(page);
+  const { sockets } = await room(page, () => snapshot());
+  await expect(page.getByRole('button', { name: 'Confirmar puja' })).toBeEnabled();
+  await sockets.at(-1)!.close({ code: 1008, reason: 'Ticket inválido, vencido o ya usado.' });
+  await expect.poll(() => sockets.length).toBe(2);
+  await sockets.at(-1)!.close({ code: 1008, reason: 'Ticket inválido, vencido o ya usado.' });
+  await page.clock.runFor(31000);
+  expect(sockets).toHaveLength(2);
+});
+
+test('without a valid context the ticket request fails and no socket is opened', async ({ page }) => {
+  await page.clock.install();
+  await installSession(page);
+  await page.route('**/api/v1/subastas/*/live/ticket', route => route.fulfill({ status: 403, json: { message: 'Sin contexto' } }));
+  const { sockets } = await room(page, () => snapshot());
+  await expect(page.getByRole('heading', { name: 'LOTE-PRUEBA-101' })).toBeVisible();
+  await page.clock.runFor(31000);
+  expect(sockets).toHaveLength(0);
 });
 
 test('anonymous visitors never open a live transport even when the live flag is enabled', async ({ page }) => {

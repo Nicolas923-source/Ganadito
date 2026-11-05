@@ -84,17 +84,47 @@ test('V05 Spot admite coordenadas nulas sin inventar una posición seleccionable
   await expect(page.locator('.leaflet-popup')).toHaveCount(0);
 });
 
-test('V05 reconoce PUBLICA en la ruta regular sin hashes ni atribuciones privadas', async ({ page }) => {
+test('V05 muestra la vista PUBLICA en la ruta regular: eventos sin hashes ni autor y verificación en el servidor', async ({ page }) => {
   await installSession(page);
   let verificaciones = 0;
   await page.route('**/api/v1/trazabilidad/bovinos/ajeno/pasaporte', route => route.fulfill({ json: pasaporte('PUBLICA', 'ajeno') }));
-  await page.route('**/api/v1/trazabilidad/bovinos/ajeno/verificar', route => { verificaciones++; return route.abort(); });
+  await page.route('**/api/v1/trazabilidad/bovinos/ajeno/verificar', route => { verificaciones++; return route.fulfill({ json: { integro: true, total_eventos: 1 } }); });
   await page.goto('/trazabilidad/ajeno');
-  await expect(page.getByRole('status').filter({ hasText: 'vista completa no está disponible' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'ARETE-ajeno', exact: true })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'Vista pública' })).toBeVisible();
   await expect(page.getByRole('alert').filter({ hasText: 'pasaporte válido' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Verificar cadena', exact: true })).toHaveCount(0);
-  await expect(page.getByText(/Autor:|Sistema|Hash Previo|Hash Bloque/)).toHaveCount(0);
-  expect(verificaciones).toBe(0);
+  await expect(page.getByText('420', { exact: true })).toBeVisible();
+  await expect(page.getByText('Autor reservado')).toBeVisible();
+  await expect(page.getByText(/Autor:|Hash Previo|Hash Bloque/)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Verificar cadena', exact: true }).click();
+  await expect(page.getByText('El servidor confirmó la integridad de la cadena.')).toBeVisible();
+  expect(verificaciones).toBe(1);
+});
+
+test('V05 QR público: /publico consulta sin token aunque haya sesión y muestra la vista PUBLICA', async ({ page }) => {
+  await installSession(page);
+  const autorizaciones: (string | undefined)[] = [];
+  await page.route('**/api/v1/trazabilidad/bovinos/qr/pasaporte', route => {
+    autorizaciones.push(route.request().headers()['authorization']);
+    return route.fulfill({ json: pasaporte('PUBLICA', 'qr') });
+  });
+  await page.route('**/api/v1/trazabilidad/bovinos/qr/verificar', route => {
+    autorizaciones.push(route.request().headers()['authorization']);
+    return route.fulfill({ json: { integro: true, total_eventos: 1 } });
+  });
+  await page.goto('/trazabilidad/qr/publico');
+  await expect(page.getByRole('heading', { name: 'ARETE-qr', exact: true })).toBeVisible();
+  await expect(page.getByText(/Hash Previo|Hash Bloque/)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Verificar cadena', exact: true }).click();
+  await expect(page.getByText('El servidor confirmó la integridad de la cadena.')).toBeVisible();
+  expect(autorizaciones).toEqual([undefined, undefined]);
+});
+
+test('V05 QR público rechaza una vista COMPLETA servida a un anónimo', async ({ page }) => {
+  await page.route('**/api/v1/trazabilidad/bovinos/qr2/pasaporte', route => route.fulfill({ json: pasaporte('COMPLETA', 'qr2') }));
+  await page.goto('/trazabilidad/qr2/publico');
+  await expect(page.getByRole('alert').filter({ hasText: 'pasaporte válido' })).toBeVisible();
+  await expect(page.getByText(/Hash Bloque/)).toHaveCount(0);
 });
 
 test('V05 COMPLETA solo se representa si coincide con la organización activa', async ({ page }) => {
@@ -132,10 +162,10 @@ for (const tipo of ['HITO_HISTORICO_DESCONOCIDO', 'constructor', 'toString', '__
     data.eventos[0].event_type = tipo;
     await page.route('**/api/v1/trazabilidad/bovinos/historico-publico/pasaporte', route => route.fulfill({ json: data }));
     await page.goto('/trazabilidad/historico-publico');
-    await expect(page.getByRole('status').filter({ hasText: 'vista completa no está disponible' })).toBeVisible();
+    await expect(page.getByRole('status').filter({ hasText: 'Vista pública' })).toBeVisible();
     await expect(page.getByRole('alert').filter({ hasText: 'pasaporte válido' })).toHaveCount(0);
-    await expect(page.getByText(/Autor:|Sistema|Hash Previo|Hash Bloque/)).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Verificar cadena', exact: true })).toHaveCount(0);
+    await expect(page.getByText(tipo, { exact: true }).first()).toBeVisible();
+    await expect(page.getByText(/Autor:|Hash Previo|Hash Bloque/)).toHaveCount(0);
   });
 }
 
