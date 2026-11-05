@@ -137,6 +137,11 @@ Respuesta `201`:
 2. `Authorization: Bearer`, para clientes que no son navegador;
 3. `?access_token=<jwt>`, **obsoleto**. Solo funciona fuera de producción o si `WS_PERMITIR_ACCESS_TOKEN_EN_URL=true`, y se eliminará cuando la web use el ticket.
 
+- **Autorización vigente [WS-AUTH]:**
+  - Con `Authorization: Bearer` (o `?access_token=`) el JWT debe traer un contexto activo, y esa membresía (organización + rol) debe seguir vigente en PostgreSQL. Si falta el contexto, se cierra con `1008 Se requiere un contexto organizacional activo.`; si la membresía se revocó, con `1008 Sesión revocada.`.
+  - **Durante** la conexión, cada instancia revalida en PostgreSQL la membresía de sus sockets cada 30 s; si se revocó o se cambió de contexto, cierra con `1008 Sesión revocada.` y retira la suscripción. No depende de avisos por Redis.
+  - La conexión se cierra al vencer el `exp` del JWT, o a los 15 min si se abrió con ticket: `1008 Sesión expirada; reconecte con un ticket nuevo.`. El cliente pide un ticket nuevo y recupera el snapshot.
+  - Si PostgreSQL no responde en 2 revalidaciones seguidas, se cierra con `1011 No se pudo verificar la sesión.`, porque la conexión falla cerrada.
 - **[N04]** Si la credencial es inválida o el lote no existe, el servidor cierra la conexión con código `1008`. Con un ticket vencido, usado o de otro lote, el motivo es `Ticket inválido, vencido o ya usado.`
 - El canal es **solo de servidor a cliente**. Las pujas se envían por REST.
 
