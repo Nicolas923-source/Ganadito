@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
+import { limitar, REGLAS } from '../rate-limit.js';
 import type pg from 'pg';
 import { SubastasService, SubastaError } from './subastas.service.js';
 import { SubastasCloserService } from './subastas-closer.service.js';
@@ -98,7 +99,7 @@ export const subastasRoutes: FastifyPluginAsync<SubastasRoutesOptions> = async (
    */
   fastify.post<{ Params: { id: string }; Body: EmitirPujaInput; Headers: { 'idempotency-key'?: string } }>(
     '/subastas/:id/pujas',
-    { preHandler: [authenticate, requireRole('COMPRADOR')] },
+    { preHandler: [authenticate, requireRole('COMPRADOR'), limitar(fastify, REGLAS.pujasUsuario)] },
     async (request, reply) => {
       const { id } = request.params;
       const session = request.userSession!;

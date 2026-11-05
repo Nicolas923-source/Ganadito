@@ -24,6 +24,7 @@ import { SunatAdapter } from './integraciones/sunat.adapter.js';
 import { CavaliAdapter } from './integraciones/cavali.adapter.js';
 import { checkHealth } from './health.js';
 import { redactarUrl, serializarPeticion } from './log-redaction.js';
+import { LimitadorTasa } from './rate-limit.js';
 import type { Writable } from 'node:stream';
 
 export interface AppOptions {
@@ -32,6 +33,12 @@ export interface AppOptions {
   logger?: boolean;
   /** Destino alternativo de los logs (solo pruebas). */
   logStream?: Writable;
+  /**
+   * Límite de tasa (login, registro, pujas, ticket WS, peso, cotizar). Activo por defecto
+   * salvo RATE_LIMIT_DISABLED=true o bajo el runner node:test (cada suite hace muchos
+   * logins desde 127.0.0.1); la prueba de rate-limit lo activa explícitamente.
+   */
+  limitarTasa?: boolean;
   redisSubscriber?: Redis;
   wsHub?: SubastaWsHub;
   /** Solo pruebas: revalidación y vida máxima de los sockets de subastas. */
@@ -111,6 +118,12 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
   });
 
   const pool = options.pool ?? getPool();
+
+  const limitarTasa = options.limitarTasa ?? (process.env.RATE_LIMIT_DISABLED !== 'true' && !process.env.NODE_TEST_CONTEXT);
+  const limitador = new LimitadorTasa();
+  app.decorate('limitador', limitador);
+  app.decorate('limitarTasa', limitarTasa);
+  app.addHook('onClose', async () => limitador.cerrar());
   const jwtSecret = resolveJwtSecret(options.jwtSecret);
 
   // Preservar rawBody para validación criptográfica de firmas HMAC
