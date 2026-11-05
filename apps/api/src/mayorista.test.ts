@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { getPool, closePool, runInitialMigration } from './db.js';
 import { buildApp } from './app.js';
 import { AuthService } from './auth/auth.service.js';
+import { crearUsuarioConRol } from './test-helpers.js';
 import type {
   PoolConProgreso,
   UnirsePoolResponse,
@@ -332,9 +333,13 @@ describe('Motor de Compras Mayoristas, Demand Pooling B2B y Ofertas Flash', { co
     );
 
     // 5.3 Invocar endpoint de cierre desasistido
+    const anonimo = await app.inject({ method: 'POST', url: '/api/v1/mayorista/pools/cerrar-expirados' });
+    assert.strictEqual(anonimo.statusCode, 401, 'antes cualquiera podía cerrar pools');
+    const admin = await crearUsuarioConRol(app, authService, 'ADMIN', 'mayorista');
     const closeRes = await app.inject({
       method: 'POST',
-      url: '/api/v1/mayorista/pools/cerrar-expirados'
+      url: '/api/v1/mayorista/pools/cerrar-expirados',
+      headers: { authorization: `Bearer ${admin.token}` }
     });
     assert.strictEqual(closeRes.statusCode, 200);
     const closeData: CerrarPoolsExpiradosResponse = closeRes.json();

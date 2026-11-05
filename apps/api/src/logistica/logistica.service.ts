@@ -1,4 +1,5 @@
 import type pg from 'pg';
+import { sqlPosicionPublica } from '../mapa/ubicacion-publica.js';
 import {
   calcularCotizacionFlete,
   type TipoUnidadTransporte,
@@ -86,15 +87,39 @@ function mapSolicitudRow(row: any): SolicitudFlete {
   };
 }
 
+export interface VisorFlete {
+  userId: string;
+  organizacionId?: string;
+  /** Rol TRANSPORTISTA en el CONTEXTO ACTIVO (no en cualquier organización). */
+  esTransportista: boolean;
+}
+
+/** Parámetros: $1 usuario, $2 organización activa, $3 es transportista (boolean). */
+const SQL_FLETE_VISIBLE = `(
+  f.solicitante_id::text = $1
+  OR f.transportista_id::text = $1
+  OR ($3::boolean AND f.estado = 'PENDIENTE_ASIGNACION')
+  OR EXISTS (SELECT 1 FROM ordenes_compra oc
+             WHERE oc.id = f.orden_compra_id
+               AND (oc.organizacion_compradora_id = $2::uuid OR oc.organizacion_vendedora_id = $2::uuid))
+)`;
+
 export class LogisticaService {
   constructor(private readonly pool: pg.Pool) {}
 
   /**
    * Obtiene la distancia geodésica esferoidal (km) entre dos establecimientos en PostGIS.
    */
+  /**
+   * Distancia entre dos establecimientos usando la posición que el VISITANTE puede ver
+   * (Ley 29733): un ESTABLO de otra organización se mide desde su punto en la rejilla de
+   * 0.01°. Con la distancia exacta, tres consultas desde anclas conocidas triangulaban
+   * la ubicación del establo y anulaban la privacidad del mapa.
+   */
   async obtenerDistanciaEstablecimientos(
     origenEstablecimientoId: string,
     destinoEstablecimientoId: string,
+    visitanteOrgId: string | null,
     client?: pg.PoolClient
   ): Promise<number> {
     const executor = client ?? this.pool;
@@ -108,11 +133,11 @@ export class LogisticaService {
          (SELECT EXISTS(SELECT 1 FROM establecimientos WHERE id = $1)) AS origen_existe,
          (SELECT EXISTS(SELECT 1 FROM establecimientos WHERE id = $2)) AS destino_existe,
          (
-           SELECT ST_Distance(o.coordenadas, d.coordenadas) / 1000.0
+           SELECT ST_Distance(${sqlPosicionPublica('o', '$3')}, ${sqlPosicionPublica('d', '$3')}) / 1000.0
            FROM establecimientos o, establecimientos d
            WHERE o.id = $1 AND d.id = $2
          ) AS distancia_km;`,
-      [origenEstablecimientoId, destinoEstablecimientoId]
+      [origenEstablecimientoId, destinoEstablecimientoId, visitanteOrgId]
     );
 
     const row = res.rows[0];
@@ -131,7 +156,7 @@ export class LogisticaService {
    * POST /api/v1/logistica/cotizar
    * Calcula la distancia PostGIS y cotiza el flete sin persistir.
    */
-  async cotizarFlete(input: CotizarFleteInput): Promise<CotizacionFleteResult> {
+  async cotizarFlete(input: CotizarFleteInput, visitanteOrgId: string | null): Promise<CotizacionFleteResult> {
     if (!input.origen_establecimiento_id || !input.destino_establecimiento_id) {
       throw new LogisticaError('Debe especificar origen_establecimiento_id y destino_establecimiento_id.', 400);
     }
@@ -149,16 +174,12 @@ export class LogisticaService {
 
     const distanciaKm = await this.obtenerDistanciaEstablecimientos(
       input.origen_establecimiento_id,
-      input.destino_establecimiento_id
+      input.destino_establecimiento_id,
+      visitanteOrgId
     );
 
-    return calcularCotizacionFlete(
-      distanciaKm,
-      input.peso_toneladas,
-      input.tipo_unidad,
-      input.tarifa_base,
-      input.factor_km_tm
-    );
+    // Mismas tarifas que crearSolicitud: la cotización no puede diferir del precio guardado.
+    return calcularCotizacionFlete(distanciaKm, input.peso_toneladas, input.tipo_unidad);
   }
 
   /**
@@ -236,6 +257,7 @@ export class LogisticaService {
    */
   async crearSolicitud(
     solicitanteId: string,
+    organizacionId: string,
     input: CrearSolicitudFleteInput
   ): Promise<SolicitudFlete> {
     if (!input.origen_establecimiento_id || !input.destino_establecimiento_id) {
@@ -260,20 +282,34 @@ export class LogisticaService {
       throw new LogisticaError('peso_toneladas debe ser un valor numérico positivo.', 400);
     }
 
-    // Verificar orden de compra si se especificó
+    // La orden debe ser de la organización activa (compradora o vendedora). Si no, 404
+    // opaco: no se revela si existe una orden ajena.
     if (input.orden_compra_id) {
-      const ocRes = await this.pool.query('SELECT id FROM ordenes_compra WHERE id = $1', [
-        input.orden_compra_id
-      ]);
+      const ocRes = await this.pool.query(
+        `SELECT id FROM ordenes_compra
+         WHERE id::text = $1 AND (organizacion_compradora_id = $2 OR organizacion_vendedora_id = $2)`,
+        [input.orden_compra_id, organizacionId]
+      );
       if (ocRes.rows.length === 0) {
-        throw new LogisticaError(`La orden de compra ${input.orden_compra_id} no existe.`, 404);
+        throw new LogisticaError('Orden de compra no encontrada.', 404);
       }
     }
 
     // Calcular distancia geográfica y cotización
+    // Al menos un extremo debe ser de la organización solicitante: no se crean fletes
+    // entre establecimientos ajenos (sería otra vía de consulta de distancias).
+    const propios = await this.pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM establecimientos WHERE id = ANY($1::uuid[]) AND organizacion_id = $2`,
+      [[input.origen_establecimiento_id, input.destino_establecimiento_id], organizacionId]
+    );
+    if ((propios.rows[0]?.n ?? 0) === 0) {
+      throw new LogisticaError('El origen o el destino debe ser un establecimiento de su organización.', 403);
+    }
+
     const distanciaKm = await this.obtenerDistanciaEstablecimientos(
       input.origen_establecimiento_id,
-      input.destino_establecimiento_id
+      input.destino_establecimiento_id,
+      organizacionId
     );
 
     const cotizacion = calcularCotizacionFlete(
@@ -539,10 +575,16 @@ export class LogisticaService {
   /**
    * Obtiene una solicitud de flete por ID.
    */
-  async obtenerSolicitudPorId(solicitudId: string): Promise<SolicitudFlete> {
-    const res = await this.pool.query('SELECT * FROM fletes_solicitudes WHERE id = $1;', [
-      solicitudId
-    ]);
+  /**
+   * Visible para: quien la solicitó, el transportista asignado, las organizaciones de la
+   * orden vinculada y, mientras está PENDIENTE_ASIGNACION, un TRANSPORTISTA que busca carga.
+   */
+  async obtenerSolicitudPorId(solicitudId: string, visor: VisorFlete): Promise<SolicitudFlete> {
+    const res = await this.pool.query(
+      `SELECT f.* FROM fletes_solicitudes f
+       WHERE f.id::text = $4 AND ${SQL_FLETE_VISIBLE}`,
+      [visor.userId, visor.organizacionId ?? null, visor.esTransportista, solicitudId]
+    );
     if (res.rows.length === 0) {
       throw new LogisticaError('Solicitud de flete no encontrada.', 404);
     }
@@ -552,12 +594,12 @@ export class LogisticaService {
   /**
    * Lista solicitudes de flete según filtros.
    */
-  async listarSolicitudes(filtros?: {
+  async listarSolicitudes(visor: VisorFlete, filtros?: {
     estado?: EstadoSolicitudFlete;
     transportista_id?: string;
   }): Promise<SolicitudFlete[]> {
-    const conditions: string[] = [];
-    const values: any[] = [];
+    const values: any[] = [visor.userId, visor.organizacionId ?? null, visor.esTransportista];
+    const conditions: string[] = [SQL_FLETE_VISIBLE.replace(/\bf\./g, '')];
 
     if (filtros?.estado) {
       values.push(filtros.estado);
@@ -569,8 +611,8 @@ export class LogisticaService {
       conditions.push(`transportista_id = $${values.length}`);
     }
 
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-    const query = `SELECT * FROM fletes_solicitudes ${whereClause} ORDER BY created_at DESC;`;
+    const whereClause = `WHERE ${conditions.join(' AND ')}`;
+    const query = `SELECT * FROM fletes_solicitudes ${whereClause} ORDER BY created_at DESC LIMIT 200;`;
 
     const res = await this.pool.query(query, values);
     return res.rows.map(mapSolicitudRow);

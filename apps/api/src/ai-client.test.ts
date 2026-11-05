@@ -4,6 +4,8 @@ import http from 'node:http';
 import { getPool, closePool, runInitialMigration } from './db.js';
 import { buildApp } from './app.js';
 import { AiClientService } from './integraciones/ai-client.service.js';
+import { AuthService } from './auth/auth.service.js';
+import { crearUsuarioConRol } from './test-helpers.js';
 
 describe('Servicio Satélite de IA (ExpoGanadito Vision & Dr. Ganadito Bromatología CIELAB) y Resiliencia', { concurrency: 1 }, () => {
   const pool = getPool();
@@ -19,10 +21,13 @@ describe('Servicio Satélite de IA (ExpoGanadito Vision & Dr. Ganadito Bromatolo
   });
 
   const app = buildApp({ pool, aiClient });
+  let token = '';
+  const auth = () => ({ authorization: `Bearer ${token}` });
 
   before(async () => {
     await runInitialMigration();
     await app.ready();
+    token = (await crearUsuarioConRol(app, new AuthService(pool), 'OPERADOR_CAMAL', 'ia')).token;
 
     // Levantar servidor satélite en puerto efímero para pruebas deterministas de integración HTTP
     mockSatelliteServer = http.createServer(async (req, res) => {
@@ -142,6 +147,7 @@ describe('Servicio Satélite de IA (ExpoGanadito Vision & Dr. Ganadito Bromatolo
     const normalRes = await app.inject({
       method: 'POST',
       url: '/api/v1/ia/bromatologia/analizar-color',
+      headers: auth(),
       payload: {
         bgr_color: [95, 100, 225]
       }
@@ -159,6 +165,7 @@ describe('Servicio Satélite de IA (ExpoGanadito Vision & Dr. Ganadito Bromatolo
     const dfdRes = await app.inject({
       method: 'POST',
       url: '/api/v1/ia/bromatologia/analizar-color',
+      headers: auth(),
       payload: {
         bgr_color: [25, 20, 65]
       }
@@ -179,6 +186,7 @@ describe('Servicio Satélite de IA (ExpoGanadito Vision & Dr. Ganadito Bromatolo
     const videoRes = await app.inject({
       method: 'POST',
       url: '/api/v1/ia/vision/analizar-video',
+      headers: auth(),
       payload: {
         video_url: 'https://cdn.ganadito.pe/lotes/lote-15s.mp4',
         duracion_segundos: 15
@@ -195,6 +203,7 @@ describe('Servicio Satélite de IA (ExpoGanadito Vision & Dr. Ganadito Bromatolo
     const minsaRes = await app.inject({
       method: 'POST',
       url: '/api/v1/ia/bromatologia/checklist-minsa',
+      headers: auth(),
       payload: {
         temperatura_recepcion_c: 6.5,
         color_organoleptico: 'ROJO_CEREZA_BRILLANTE',
@@ -208,6 +217,13 @@ describe('Servicio Satélite de IA (ExpoGanadito Vision & Dr. Ganadito Bromatolo
     assert.strictEqual(minsaData.aprobado_sanitariamente, false);
   });
 
+  test('2b. Sin sesión las rutas de IA responden 401 (no son un proxy anónimo al satélite)', async () => {
+    for (const url of ['/api/v1/ia/vision/analizar-video', '/api/v1/ia/bromatologia/analizar-color', '/api/v1/ia/bromatologia/checklist-minsa']) {
+      const r = await app.inject({ method: 'POST', url, payload: {} });
+      assert.strictEqual(r.statusCode, 401, url);
+    }
+  });
+
   test('3. Prueba de Resiliencia ante Caída (Puerto cerrado): Fastify captura el fallo con gracia y retorna 200 con fallback_manual: true', async () => {
     aiClient.resetCircuit();
     // Apuntar a un puerto cerrado donde ningún proceso escucha
@@ -216,6 +232,7 @@ describe('Servicio Satélite de IA (ExpoGanadito Vision & Dr. Ganadito Bromatolo
     const resColor = await app.inject({
       method: 'POST',
       url: '/api/v1/ia/bromatologia/analizar-color',
+      headers: auth(),
       payload: {
         bgr_color: [90, 90, 200]
       }
@@ -230,6 +247,7 @@ describe('Servicio Satélite de IA (ExpoGanadito Vision & Dr. Ganadito Bromatolo
     const resVideo = await app.inject({
       method: 'POST',
       url: '/api/v1/ia/vision/analizar-video',
+      headers: auth(),
       payload: {
         video_url: 'https://cdn.ganadito.pe/lotes/offline-test.mp4'
       }
@@ -254,6 +272,7 @@ describe('Servicio Satélite de IA (ExpoGanadito Vision & Dr. Ganadito Bromatolo
       const resTimeout = await app.inject({
         method: 'POST',
         url: '/api/v1/ia/bromatologia/analizar-color',
+      headers: auth(),
         payload: {
           bgr_color: [100, 100, 210]
         }
@@ -267,5 +286,21 @@ describe('Servicio Satélite de IA (ExpoGanadito Vision & Dr. Ganadito Bromatolo
     } finally {
       simulateSlowResponse = false;
     }
+  });
+});
+
+describe('IA en contingencia: sin dictámenes ni mediciones inventadas', { concurrency: 1 }, () => {
+  const pool = getPool();
+  const caido = new AiClientService({ baseUrl: 'http://127.0.0.1:1', timeoutMs: 200, failureThreshold: 99 });
+  test('el checklist MINSA sin satélite no aprueba; el video no inventa puntaje; no se filtran errores internos', async () => {
+    void pool;
+    const minsa = await caido.evaluarChecklistMinsa({} as any);
+    assert.strictEqual(minsa.aprobado_sanitariamente, null, 'antes un cuerpo vacío daba aprobado: true');
+    assert.strictEqual(minsa.rechazo_sanitario, null);
+    assert.strictEqual(minsa.dictamen, 'PENDIENTE_REVISION_MANUAL');
+    assert.ok(!String(minsa.motivo_fallback).includes('HTTP_'));
+    const video = await caido.analizarVideo({});
+    assert.strictEqual(video.condicion_corporal_score, null);
+    assert.ok(!/ECONNREFUSED|fetch failed|HTTP_/.test(String(video.motivo_fallback)));
   });
 });

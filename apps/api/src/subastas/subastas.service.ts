@@ -148,7 +148,12 @@ export class SubastasService {
    * Consulta el Snapshot oficial en tiempo real del lote sin bloqueos transaccionales.
    * Calcula el tiempo restante oficial del reloj del servidor de base de datos.
    */
-  async obtenerSnapshot(loteId: string): Promise<LoteSnapshotResponse> {
+  /**
+   * Lectura pública del lote. Privacidad: el postor que va ganando (id y nombre, dato
+   * personal) solo se revela A ÉL MISMO; para los demás va null. Un lote en BORRADOR no
+   * está publicado: solo lo ve su organización vendedora (404 para el resto).
+   */
+  async obtenerSnapshot(loteId: string, visor: { userId?: string; organizacionId?: string } = {}): Promise<LoteSnapshotResponse> {
     const res = await this.pool.query<{
       id: string;
       codigo_lote: string;
@@ -165,9 +170,11 @@ export class SubastasService {
       version: number;
       iniciado: boolean;
       antes_del_cierre: boolean;
+      vendedor_id: string;
     }>(
       `SELECT
          l.id,
+         l.vendedor_id,
          l.codigo_lote,
          l.estado,
          l.precio_base::float,
@@ -194,7 +201,14 @@ export class SubastasService {
       throw new SubastaError('Lote de subasta no encontrado.', 404);
     }
 
-    const { iniciado, antes_del_cierre, ...row } = res.rows[0]!;
+    const { iniciado, antes_del_cierre, vendedor_id, ...row } = res.rows[0]!;
+    if (row.estado === 'BORRADOR' && vendedor_id !== visor.organizacionId) {
+      throw new SubastaError('Lote de subasta no encontrado.', 404);
+    }
+    if (!visor.userId || row.postor_ganador_id !== visor.userId) {
+      row.postor_ganador_id = null;
+      row.postor_ganador_nombre = null;
+    }
     // Misma regla que la escritura: ACTIVO, ya iniciado y antes del cierre oficial.
     const esAbierta = row.estado === 'ACTIVO' && iniciado && antes_del_cierre;
 

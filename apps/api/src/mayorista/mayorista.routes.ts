@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import type pg from 'pg';
 import { MayoristaService, MayoristaError } from './mayorista.service.js';
 import { createAuthMiddleware } from '../auth/auth.middleware.js';
+import { requireRole } from '../auth/authorize.js';
 import type {
   CrearPoolMayoristaInput,
   UnirsePoolInput,
@@ -171,6 +172,8 @@ export const mayoristaRoutes: FastifyPluginAsync<MayoristaRoutesOptions> = async
    */
   fastify.post(
     '/pools/cerrar-expirados',
+    // Igual que el cierre de subastas: solo personal interno (antes era anónimo).
+    { onRequest: [authenticate, requireRole('ADMIN')] },
     async (request, reply) => {
       try {
         const resultado = await mayoristaService.cerrarPoolsExpirados();

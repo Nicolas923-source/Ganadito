@@ -196,7 +196,8 @@ export class AiClientService {
     } catch (err: any) {
       return {
         biotipo_sugerido: 'PENDIENTE_CLASIFICACION',
-        condicion_corporal_score: 3.0,
+        // Sin satélite no hay medición: null, nunca un puntaje inventado.
+        condicion_corporal_score: null,
         estimacion_dentaria: 'PENDIENTE_INSPECCION',
         confianza_score: 0,
         fotogramas_muestreados: 0,
@@ -205,7 +206,7 @@ export class AiClientService {
         estado: 'PENDIENTE_REVISION_MANUAL',
         servicio_disponible: false,
         fallback_manual: true,
-        motivo_fallback: err?.message ?? 'Satélite de visión computacional no disponible'
+        motivo_fallback: 'Satélite de visión computacional no disponible'
       };
     }
   }
@@ -242,7 +243,7 @@ export class AiClientService {
         estado: 'PENDIENTE_REVISION_MANUAL',
         servicio_disponible: false,
         fallback_manual: true,
-        motivo_fallback: err?.message ?? 'Satélite bromatológico no disponible'
+        motivo_fallback: 'Satélite bromatológico no disponible'
       };
     }
   }
@@ -275,22 +276,25 @@ export class AiClientService {
       const olorOk = input.ausencia_olores_extranos ?? true;
       const aprobado = tempOk && colorOk && olorOk;
 
+      // Contingencia: SIN dictamen. Antes un cuerpo vacío (temp 0, color y olor por defecto)
+      // devolvía aprobado_sanitariamente: true sin ninguna medición real.
+      void aprobado;
       return {
         normativa_referencia: 'RM N.° 822-2018/MINSA',
-        aprobado_sanitariamente: aprobado,
-        rechazo_sanitario: !aprobado,
+        aprobado_sanitariamente: null,
+        rechazo_sanitario: null,
         temperatura_recepcion_c: temp,
         temperatura_conforme: tempOk,
         color_conforme: colorOk,
         olor_conforme: olorOk,
-        dictamen: aprobado ? 'PENDIENTE_VALIDACION_OFICIAL' : 'RECHAZO_PREVENTIVO_TEMPERATURA',
+        dictamen: 'PENDIENTE_REVISION_MANUAL',
         observaciones: [
           'Satélite IA no disponible; pre-evaluación de contingencia local aplicada. Requiere firma manual del inspector sanitario.'
         ],
         estado: 'PENDIENTE_REVISION_MANUAL',
         servicio_disponible: false,
         fallback_manual: true,
-        motivo_fallback: err?.message ?? 'Satélite sanitario no disponible'
+        motivo_fallback: 'Satélite sanitario no disponible'
       };
     }
   }
