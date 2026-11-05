@@ -97,7 +97,7 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
       '22003': [400, 'Valor numérico fuera de rango.']
     };
     const mapeo = typeof error?.code === 'string' ? porCodigo[error.code] : undefined;
-    if (mapeo) return reply.status(mapeo[0]).send({ statusCode: mapeo[0], error: 'Bad Request', message: mapeo[1] });
+    if (mapeo) return reply.status(mapeo[0]).send({ statusCode: mapeo[0], error: mapeo[0] === 409 ? 'Conflict' : mapeo[0] === 404 ? 'Not Found' : 'Bad Request', message: mapeo[1] });
     const status = typeof error?.statusCode === 'number' && error.statusCode >= 400 ? error.statusCode : 500;
     if (status >= 500) request.log.error(error);
     return reply.status(status).send({ statusCode: status, error: status >= 500 ? 'Internal Server Error' : error.name ?? 'Error', message: status >= 500 ? 'Error interno.' : error.message });
