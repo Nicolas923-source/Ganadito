@@ -27,19 +27,24 @@ const SELECT_ORDEN = `
          o.monto_adjudicado::float AS monto_adjudicado,
          o.comision_plataforma::float AS comision_plataforma,
          o.total_a_pagar::float AS total_a_pagar,
-         o.organizacion_compradora_id, o.organizacion_vendedora_id, o.created_at
+         o.organizacion_compradora_id, o.organizacion_vendedora_id, o.created_at,
+         -- Marca del cursor con MICROsegundos: Date/toISOString truncan a milisegundos y
+         -- las órdenes creadas en el mismo milisegundo se saltaban entre páginas.
+         to_char(o.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_ts
   FROM ordenes_compra o
   JOIN lotes_subasta l ON l.id = o.lote_id`;
 
-function encodeCursor(row: { created_at: string | Date; id: string }): string {
-  const ts = row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at;
-  return Buffer.from(JSON.stringify([ts, row.id])).toString('base64url');
+// ISO 8601 en UTC con 1 a 6 decimales (los cursores antiguos tienen 3).
+const CURSOR_TS_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z$/;
+
+function encodeCursor(row: { cursor_ts: string; id: string }): string {
+  return Buffer.from(JSON.stringify([row.cursor_ts, row.id])).toString('base64url');
 }
 
 function decodeCursor(cursor: string): [string, string] {
   try {
     const [ts, id] = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
-    if (typeof ts !== 'string' || isNaN(Date.parse(ts)) || typeof id !== 'string' || !UUID_RE.test(id)) {
+    if (typeof ts !== 'string' || !CURSOR_TS_RE.test(ts) || typeof id !== 'string' || !UUID_RE.test(id)) {
       throw new Error();
     }
     return [ts, id];
@@ -82,7 +87,7 @@ export class OrdenesConsultaService {
       filtroCursor = 'AND (o.created_at, o.id) < ($3::timestamptz, $4::uuid)';
     }
 
-    const res = await this.pool.query<OrdenResumen>(
+    const res = await this.pool.query<OrdenResumen & { cursor_ts: string }>(
       `${SELECT_ORDEN}
        WHERE ${filtroRol} ${filtroCursor}
        ORDER BY o.created_at DESC, o.id DESC
@@ -91,15 +96,16 @@ export class OrdenesConsultaService {
     );
 
     const hasMore = res.rows.length > limit;
-    const data = hasMore ? res.rows.slice(0, limit) : res.rows;
-    return { data, next_cursor: hasMore ? encodeCursor(data[data.length - 1]!) : null };
+    const filas = hasMore ? res.rows.slice(0, limit) : res.rows;
+    const data = filas.map(({ cursor_ts: _cursor, ...orden }) => orden);
+    return { data, next_cursor: hasMore ? encodeCursor(filas[filas.length - 1]!) : null };
   }
 
   async obtener(id: string, organizacionId: string): Promise<OrdenResumen> {
     if (!UUID_RE.test(id)) {
       throw new ConsultaOrdenError('Orden de compra no encontrada.', 404);
     }
-    const res = await this.pool.query<OrdenResumen>(
+    const res = await this.pool.query<OrdenResumen & { cursor_ts: string }>(
       `${SELECT_ORDEN}
        WHERE o.id = $1 AND (o.organizacion_compradora_id = $2 OR o.organizacion_vendedora_id = $2)`,
       [id, organizacionId]
@@ -107,6 +113,7 @@ export class OrdenesConsultaService {
     if (res.rows.length === 0) {
       throw new ConsultaOrdenError('Orden de compra no encontrada.', 404);
     }
-    return res.rows[0]!;
+    const { cursor_ts: _cursor, ...orden } = res.rows[0]!;
+    return orden;
   }
 }

@@ -24,8 +24,21 @@ Ruta pública, usada por el QR. El token es opcional.
   - `"COMPLETA"` solo para la organización propietaria del bovino.
   - `"PUBLICA"` para todos los demás.
 - En la vista `PUBLICA`:
-  - `eventos[].autor_id` es `null`.
-  - En `eventos[].metadata`, las claves con ubicación o datos personales (`gps`, `lat`, `lon`, `coordenadas`, `direccion`, `dni*`, `ruc`, `telefono`, `email`, `placa`, …) valen `"[REDACTADO]"`.
+  - `eventos[].autor_id` es `null` y `bovino.organizacion_id` es `null`: no se revela la organización dueña.
+  - `eventos[].metadata` usa una **lista blanca por tipo de evento**. Solo los valores primitivos de estas claves son públicos; **todas las demás** valen `"[REDACTADO]"`, incluidas las claves nuevas o desconocidas:
+
+    | Evento | Claves públicas |
+    |---|---|
+    | `REGISTRO_INICIAL` | `raza`, `sexo`, `fecha_nacimiento`, `peso_nacimiento_kg`, `tipo_parto` |
+    | `VACUNACION` | `vacuna`, `dosis_ml`, `lote`, `campana_oficial`, `fecha` |
+    | `TRATAMIENTO` | `producto`, `dosis_ml`, `dias_retiro`, `fecha_fin_retiro`, `fecha` |
+    | `PESAJE` | `peso_vivo_kg`, `fecha` |
+    | `MOVILIZACION_CSTI` | `csti_numero`, `guia_senasa`, `guia_transito_senasa`, `origen_distrito`, `destino_distrito`, `fecha` |
+    | `PESAJE_CAMAL` | `camal_nombre`, `camal_codigo_oficial`, `peso_vivo_kg`, `peso_canal_caliente_kg`, `rendimiento_canal_pct` |
+    | `INSPECCION_POST_MORTEM` | `camal_codigo_oficial`, `dictamen_post_mortem`, `resultado` |
+    | `CAMBIO_PROPIEDAD` | `fecha` |
+
+    `origen`, `destino` y `fundo_*` **no** son públicos, porque pueden identificar el fundo. Hay que usar `origen_distrito` y `destino_distrito`.
 - Los hashes no cambian. La integridad se comprueba con `GET /trazabilidad/bovinos/:id/verificar`, que recalcula en el servidor. La web **no** debe recalcular hashes con la metadata redactada.
 
 ## `GET /cotizaciones/pizarra` (Spot)

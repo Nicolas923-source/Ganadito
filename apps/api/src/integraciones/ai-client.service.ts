@@ -9,6 +9,34 @@ import type {
 
 export type CircuitState = 'CLOSED' | 'OPEN' | 'HALF_OPEN';
 
+/**
+ * El satélite rechazó la solicitud (4xx): es un error del cliente (puntos, foto,
+ * calibración), no una caída del servicio, y por eso NO abre el circuito.
+ */
+export class AiSolicitudRechazadaError extends Error {
+  constructor(public readonly status: number, public readonly detalle: unknown) {
+    super(`HTTP_${status}`);
+    this.name = 'AiSolicitudRechazadaError';
+  }
+}
+
+/** El satélite no está disponible (red, 5xx, tiempo agotado o circuito abierto). */
+export class AiNoDisponibleError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AiNoDisponibleError';
+  }
+}
+
+interface PostJsonOptions {
+  timeoutMs?: number;
+  /** Si es true, un 4xx se lanza como AiSolicitudRechazadaError sin contar como falla. */
+  rechazosNoSonFallas?: boolean;
+}
+
+/** Tiempo máximo de las rutas de peso: Monte Carlo de hasta 4 vistas en el satélite. */
+export const TIMEOUT_PESO_MS = 20000;
+
 export interface AiClientOptions {
   baseUrl?: string;
   timeoutMs?: number;
@@ -79,14 +107,14 @@ export class AiClientService {
     }
   }
 
-  private async postJson<TResponse>(path: string, payload: unknown): Promise<TResponse> {
+  private async postJson<TResponse>(path: string, payload: unknown, opciones: PostJsonOptions = {}): Promise<TResponse> {
     const currentState = this.getCircuitState();
     if (currentState === 'OPEN') {
       throw new Error('CIRCUIT_BREAKER_OPEN: Satélite de IA temporalmente en enfriamiento.');
     }
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timer = setTimeout(() => controller.abort(), opciones.timeoutMs ?? this.timeoutMs);
 
     try {
       const response = await fetch(`${this.baseUrl}${path}`, {
@@ -99,6 +127,13 @@ export class AiClientService {
         signal: controller.signal
       });
 
+      if (opciones.rechazosNoSonFallas && response.status >= 400 && response.status < 500) {
+        const detalle = await response.json().catch(() => null);
+        // El servicio respondió: está sano aunque la solicitud fuera inválida.
+        this.recordSuccess();
+        throw new AiSolicitudRechazadaError(response.status, detalle);
+      }
+
       if (!response.ok) {
         const errBody = await response.text().catch(() => '');
         throw new Error(`HTTP_${response.status}: ${errBody}`);
@@ -108,10 +143,36 @@ export class AiClientService {
       this.recordSuccess();
       return data;
     } catch (error) {
+      if (error instanceof AiSolicitudRechazadaError) throw error;
       this.recordFailure();
       throw error;
     } finally {
       clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Estimación orientativa de peso (1 vista -> /peso/estimar; 2-4 -> /peso/estimar-multivista).
+   * A diferencia de los otros análisis NO hay respuesta de contingencia: inventar un peso
+   * sería peor que no darlo. Lanza AiSolicitudRechazadaError (4xx) o AiNoDisponibleError.
+   */
+  async estimarPeso(vistas: unknown[]): Promise<unknown> {
+    const [ruta, cuerpo] =
+      vistas.length === 1 ? ['/api/v1/peso/estimar', vistas[0]] : ['/api/v1/peso/estimar-multivista', { vistas }];
+    return this.postPeso(ruta, cuerpo);
+  }
+
+  /** Evaluación contra balanza y propuesta de calibración (no la aplica). */
+  async evaluarPeso(pares: unknown[]): Promise<unknown> {
+    return this.postPeso('/api/v1/peso/evaluar', { pares });
+  }
+
+  private async postPeso(ruta: string, cuerpo: unknown): Promise<unknown> {
+    try {
+      return await this.postJson<unknown>(ruta, cuerpo, { timeoutMs: TIMEOUT_PESO_MS, rechazosNoSonFallas: true });
+    } catch (err: any) {
+      if (err instanceof AiSolicitudRechazadaError) throw err;
+      throw new AiNoDisponibleError(err?.name === 'AbortError' ? 'TIEMPO_AGOTADO' : String(err?.message ?? err));
     }
   }
 

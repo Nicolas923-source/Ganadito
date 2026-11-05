@@ -17,6 +17,7 @@ import { mayoristaRoutes } from './mayorista/mayorista.routes.js';
 import { gmxRoutes } from './gmx/gmx.routes.js';
 import { logisticaRoutes } from './logistica/logistica.routes.js';
 import { aiRoutes } from './integraciones/ai.routes.js';
+import { pesoRoutes } from './peso/peso.routes.js';
 import { AiClientService } from './integraciones/ai-client.service.js';
 import { taxRoutes } from './integraciones/tax.routes.js';
 import { SunatAdapter } from './integraciones/sunat.adapter.js';
@@ -186,6 +187,14 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
   // Registrar Cliente Resiliente del Servicio Satélite de Inteligencia Artificial
   app.register(aiRoutes, {
     prefix: '/api/v1/ia',
+    aiClient: options.aiClient,
+    aiServiceUrl: options.aiServiceUrl
+  });
+
+  // Estimación orientativa de peso por lote (zoometría) y pesajes de balanza
+  app.register(pesoRoutes, {
+    prefix: '/api/v1',
+    pool,
     aiClient: options.aiClient,
     aiServiceUrl: options.aiServiceUrl
   });

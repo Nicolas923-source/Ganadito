@@ -157,6 +157,17 @@ describe('Pasarela Logística Integrada (Ganadito Cargo & Express API)', { concu
   });
 
   after(async () => {
+    // Sin esta limpieza cada corrida dejaba 2 establecimientos cerca de Lima; con más de
+    // 100 acumulados, la búsqueda radial de mapa.test.ts (limit=100) perdía a Lurín.
+    const ids = [establoOrigenId, establoDestinoId].filter(Boolean);
+    if (ids.length) {
+      await pool.query(
+        `DELETE FROM fletes_solicitudes
+         WHERE origen_establecimiento_id = ANY($1::uuid[]) OR destino_establecimiento_id = ANY($1::uuid[])`,
+        [ids]
+      );
+      await pool.query('DELETE FROM establecimientos WHERE id = ANY($1::uuid[])', [ids]);
+    }
     await app.close();
     await closePool();
   });
