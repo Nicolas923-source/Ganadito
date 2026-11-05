@@ -12,7 +12,10 @@ describe('N05: privacidad de ubicación en mapa y vista pública del pasaporte',
   const password = 'PasswordPrivacidad2026!';
 
   // Punto aislado (selva de Loreto) para no mezclarse con otros datos de prueba.
-  const BASE = { lat: -4.123456 - Math.random() * 0.5, lon: -75.654321 - Math.random() * 0.5 };
+  // Determinista y FUERA de la rejilla de 0.01°: si el punto exacto cayera sobre la
+  // rejilla, la posición aproximada coincidiría con la exacta y la prueba no probaría nada.
+  const BASE = { lat: -4.123456, lon: -75.654321 };
+  const distanciaARejilla = (v: number) => Math.abs(v * 100 - Math.round(v * 100)) / 100;
   let duenoToken: string;
   let ajenoToken: string;
   let establoId: string;
@@ -127,6 +130,7 @@ describe('N05: privacidad de ubicación en mapa y vista pública del pasaporte',
     }
 
     const latExacta = BASE.lat + 0.001234;
+    assert.ok(distanciaARejilla(latExacta) > 1e-3, 'precondición: el fixture no está sobre la rejilla');
     for (const headers of [{}, auth(ajenoToken)]) {
       const c = await leer(headers);
       assert.strictEqual(c.ubicacion_aproximada, true);
@@ -188,5 +192,55 @@ describe('N05: privacidad de ubicación en mapa y vista pública del pasaporte',
 
     const verif = (await app.inject({ method: 'GET', url: `/api/v1/trazabilidad/bovinos/${bovinoId}/verificar` })).json();
     assert.strictEqual(verif.integro, true);
+  });
+
+  test('5. Bordes de la lista blanca: constructor/toString/__proto__ se rechazan al registrar y no rompen la vista pública', async () => {
+    const bov = await app.inject({
+      method: 'POST',
+      url: '/api/v1/trazabilidad/bovinos',
+      headers: auth(duenoToken),
+      payload: { codigo_arete: `PE-BORDE-${crypto.randomUUID().slice(0, 10)}`, raza: 'Brown Swiss', sexo: 'MACHO' }
+    });
+    assert.strictEqual(bov.statusCode, 201);
+    const bovinoId = bov.json().bovino.id;
+
+    for (const tipo of ['constructor', 'toString', '__proto__', 'hasOwnProperty', 'NO_EXISTE']) {
+      const r = await app.inject({
+        method: 'POST',
+        url: `/api/v1/trazabilidad/bovinos/${bovinoId}/eventos`,
+        headers: auth(duenoToken),
+        payload: { event_type: tipo, metadata: { dato: 'ficticio' } }
+      });
+      assert.strictEqual(r.statusCode, 400, `${tipo} debe rechazarse: ${r.body}`);
+    }
+
+    // Filas históricas con esos tipos (anteriores a la validación) no deben provocar 500.
+    const sec = await pool.query<{ s: number; autor: string }>(
+      'SELECT MAX(secuencia) AS s, (array_agg(autor_id))[1] AS autor FROM pasaporte_bovino_events WHERE bovino_id = $1',
+      [bovinoId]
+    );
+    let secuencia = Number(sec.rows[0]!.s);
+    const autor = sec.rows[0]!.autor;
+    for (const tipo of ['constructor', 'toString', '__proto__']) {
+      secuencia += 1;
+      await pool.query(
+        `INSERT INTO pasaporte_bovino_events (bovino_id, secuencia, event_type, metadata, prev_hash, current_hash, autor_id)
+         VALUES ($1, $2, $3, $4, $5, $5, $6)`,
+        // JSON literal: con un objeto JS, "__proto__" cambiaría el prototipo en vez de ser clave.
+        [bovinoId, secuencia, tipo, '{"__proto__":{"x":1},"constructor":"y","gps":{"lat":-4.1}}', 'f'.repeat(64), autor]
+      );
+    }
+    const publico = await app.inject({ method: 'GET', url: `/api/v1/trazabilidad/bovinos/${bovinoId}/pasaporte` });
+    assert.strictEqual(publico.statusCode, 200, publico.body);
+    const d = publico.json();
+    assert.strictEqual(d.vista, 'PUBLICA');
+    assert.strictEqual(d.bovino.organizacion_id, null);
+    for (const e of d.eventos.filter((x: any) => ['constructor', 'toString', '__proto__'].includes(x.event_type))) {
+      assert.strictEqual(e.autor_id, null);
+      // Tipo sin lista blanca: TODA su metadata queda redactada, incluidas claves heredadas.
+      assert.deepStrictEqual(Object.keys(e.metadata).sort(), ['__proto__', 'constructor', 'gps']);
+      for (const valor of Object.values(e.metadata)) assert.strictEqual(valor, '[REDACTADO]');
+      assert.ok(!JSON.stringify(e.metadata).includes('-4.1'));
+    }
   });
 });

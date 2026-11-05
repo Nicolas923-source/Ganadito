@@ -38,6 +38,16 @@ export interface CotizacionSpotResponse {
   created_at: string;
 }
 
+/**
+ * Cotización tal como la devuelve la pizarra pública: siempre trae la política de
+ * ubicación. latitud/longitud son null si la cotización no tiene establecimiento.
+ */
+export interface CotizacionPizarraResponse extends Omit<CotizacionSpotResponse, 'latitud' | 'longitud' | 'ubicacion_aproximada'> {
+  latitud: number | null;
+  longitud: number | null;
+  ubicacion_aproximada: boolean;
+}
+
 export interface ConsultaPizarraQuery {
   producto?: ProductoSpot;
   ubigeo?: string;

@@ -17,6 +17,17 @@ export interface PointGeoJSON {
 }
 
 /**
+ * Posición que la API entrega a un tercero (Ley 29733): si `ubicacion_aproximada` es
+ * true, las coordenadas están ajustadas a la rejilla de 0.01° (~1,1 km) porque el
+ * establo es de otra organización. La interfaz debe indicarlo y no mostrar un punto exacto.
+ */
+export interface UbicacionPublica {
+  latitud: number;
+  longitud: number;
+  ubicacion_aproximada: boolean;
+}
+
+/**
  * Objeto plano de coordenadas para transporte o entrada de formularios.
  */
 export interface CoordenadasGeograficas {

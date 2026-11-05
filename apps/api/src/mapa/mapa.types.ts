@@ -1,4 +1,4 @@
-import type { TipoEstablecimiento } from '@ganadito/contracts';
+import type { TipoEstablecimiento, UbicacionPublica } from '@ganadito/contracts';
 
 export interface CrearEstablecimientoInput {
   nombre_comercial: string;
@@ -23,6 +23,11 @@ export interface EstablecimientoResponse {
   distancia_km?: number;
   created_at: string;
   updated_at: string;
+}
+
+/** Resultado de /establecimientos/cercanos: posición pública y distancia. */
+export interface EstablecimientoCercanoResponse extends EstablecimientoResponse, UbicacionPublica {
+  distancia_km: number;
 }
 
 export interface BusquedaCercanosQuery {
