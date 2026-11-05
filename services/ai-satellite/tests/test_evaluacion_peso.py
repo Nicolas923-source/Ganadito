@@ -110,3 +110,40 @@ def test_todos_los_s_iguales_no_rompe_el_ajuste_libre():
     assert r.status_code == 200, r.text
     f = r.json()["calibracion_formula"]
     assert f["libre"] is None and f["recomendado"] == "solo_escala"
+
+
+def test_factor_de_escala_muy_pequeno_no_se_redondea_a_cero():
+    """Hallazgo #40: round(2.665556e-8, 5) devolvía 0.0 como propuesta."""
+    factor = 2.665556e-8
+    pares = []
+    for i in range(12):
+        largo, perimetro = 120 + 3 * i, 160 + 2 * i
+        s = float(z.peso_schaeffer_kg(perimetro, largo))
+        pares.append({"peso_real_kg": s * factor, "largo_corporal_cm": largo, "perimetro_cinta_cm": perimetro})
+    d = client.post(URL, json={"pares": pares}).json()
+    propuesto = d["propuesta"]["factor_escala_modelo"]
+    assert propuesto is not None and propuesto > 0
+    assert propuesto == pytest.approx(factor, rel=1e-5)
+    assert d["calibracion_formula"]["solo_escala"]["factor_escala"] == pytest.approx(factor, rel=1e-5)
+
+
+def test_loocv_con_apalancamiento_uno_no_publica_infinito():
+    """Hallazgo #40: si toda la variación de S depende de un solo animal, h_ii = 1."""
+    base = {"largo_corporal_cm": 140, "perimetro_cinta_cm": 180}
+    pares = [{**base, "peso_real_kg": 400 + i} for i in range(11)]
+    pares.append({"largo_corporal_cm": 160, "perimetro_cinta_cm": 200, "peso_real_kg": 560})
+    r = client.post(URL, json={"pares": pares})
+    assert r.status_code == 200, r.text
+    f = r.json()["calibracion_formula"]
+    assert f["libre"] is None
+    assert f["recomendado"] == "solo_escala"
+    assert f["solo_escala"]["mape_loocv"] is not None
+    assert any("no es evaluable" in a for a in r.json()["advertencias"])
+    # Ningún número infinito o NaN en la respuesta.
+    assert "Infinity" not in r.text and "NaN" not in r.text
+
+
+def test_ajuste_libre_devuelve_none_con_apalancamiento_extremo():
+    x = np.array([5.0] * 11 + [6.0])
+    y = x + np.random.default_rng(1).normal(0, 0.01, 12)
+    assert ev.ajustar_libre(x, y) is None
