@@ -58,6 +58,30 @@ export const subastasRoutes: FastifyPluginAsync<SubastasRoutesOptions> = async (
   );
 
   /**
+   * GET /api/v1/subastas?estado=&mios=true&limit=&cursor=
+   * Catálogo público de lotes publicados; con mios=true y sesión, los de la organización.
+   */
+  fastify.get<{ Querystring: { estado?: string; mios?: string; limit?: string; cursor?: string } }>(
+    '/subastas',
+    { onRequest: [async (request, reply) => { if (request.headers.authorization) return authenticate(request, reply); }] },
+    async (request, reply) => {
+      try {
+        const resultado = await subastasService.listarLotes(request.query ?? {}, {
+          userId: request.userSession?.userId,
+          organizacionId: request.userSession?.activeOrganizationId
+        });
+        return reply.status(200).send(resultado);
+      } catch (err: any) {
+        if (err instanceof SubastaError) {
+          return reply.status(err.statusCode).send({ statusCode: err.statusCode, error: err.name, message: err.message });
+        }
+        request.log.error(err);
+        return reply.status(500).send({ statusCode: 500, error: 'Internal Server Error', message: 'Error al listar los lotes.' });
+      }
+    }
+  );
+
+  /**
    * GET /api/v1/subastas/:id/snapshot
    * Consulta el Snapshot en tiempo real del lote de subasta (lectura sin bloqueos).
    */

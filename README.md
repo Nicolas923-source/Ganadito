@@ -1,31 +1,63 @@
 # Ganadito
 
-Plataforma ganadera y comercial construida como monolito modular: SvelteKit/TypeScript en `apps/web`, Fastify/TypeScript en `apps/api`, contratos en `packages/contracts` y PostgreSQL/PostGIS como autoridad transaccional. Redis se usa para caché y difusión de eventos.
+Plataforma de comercio ganadero para Perú, construida como **monolito modular**:
+- SvelteKit/TypeScript en `apps/web`;
+- Fastify/TypeScript en `apps/api`;
+- contratos en `packages/contracts`;
+- un satélite de IA FastAPI en `services/ai-satellite`;
+- **PostgreSQL 16 + PostGIS 3.4** como autoridad transaccional;
+- Redis solo como apoyo (difusión de eventos y presencia).
 
-El recorrido inicial es acceso y organización → lote → puja → cierre → orden pendiente de pago. Esta rama de integración ([PR #37](https://github.com/Nicolas923-source/Ganadito/pull/37)) reúne la web de Víctor con los commits originales N01–N05 de Nicolás y el contrato aprobado #29. Ya incluye arranque HTTP, órdenes REST y una prueba real del recorrido con PostgreSQL, Redis y worker en CI. El catálogo de subastas sigue pendiente: la consulta actual es por identificador.
+## MVP v0.1.0: qué incluye
 
-La [CI del código integrado](https://github.com/Nicolas923-source/Ganadito/actions/runs/41885077011) pasó sobre `27c3cd8`: 108 pruebas backend, 56 de navegador con fixtures, dos del modo HTTP y un recorrido real completo, además de tipos y compilación. Esto no sustituye las correcciones pendientes ni la revisión humana cruzada. Estado por PR: [revisión de Nicolás](docs/REVIEW_NICOLAS_2026-11-04.md). Producción, cobros reales e integraciones externas no habilitadas permanecen desactivados.
+El recorrido principal funciona de punta a punta, con la API y PostgreSQL reales:
 
-## Desarrollo web
+**acceso con organización y rol → publicar un lote → catálogo → pujar (en vivo) → cierre automático → orden pendiente de pago**
 
-Se requiere Node según [.nvmrc](.nvmrc) y npm compatible con [package.json](package.json). Instalar el lockfile desde la raíz:
+| Módulo | Estado en v0.1.0 |
+|---|---|
+| Acceso y contexto | Registro, login, cambio de organización y rol, sesión validada por el servidor |
+| Lotes | Publicación con detalle (cantidad, categoría, raza, descripción y origen), catálogo público y «Mis lotes» |
+| Pujas | REST idempotente (con clave por organización), anti-sniping y **sala en vivo** por WebSocket con ticket de un solo uso. La puja es por el **precio total del lote** |
+| Cierre y órdenes | El worker cierra y crea la orden `PENDIENTE_PAGO`. Los **pagos están apagados** |
+| Mapa y Spot | Establecimientos y cotizaciones. Un establo ajeno se muestra en **ubicación aproximada** (Ley 29733) |
+| Trazabilidad | Pasaporte bovino con cadena SHA-256: vista completa para el dueño y vista pública para el QR (`/trazabilidad/:id/publico`) |
+| IA de peso | Estimación **orientativa y no vinculante** con rango e incertidumbre (API). La pantalla de captura de fotos aún no está en la web |
+| GMX, mayorista, logística, SUNAT y CAVALI | Están en la API, pero en la web figuran como etapas posteriores. SUNAT y CAVALI son **simuladores apagados** (`TAX_INTEGRATIONS_ENABLED=false`) |
 
-```bash
-npm ci
-npm run dev:web -- --host 127.0.0.1 --port 4173 --strictPort
-```
+La aceptación del flujo V01–V06 está en [docs/ACTA_ACEPTACION_V01_V06.md](docs/ACTA_ACEPTACION_V01_V06.md), con la excepción E1: **no se despliega fuera de la CI** hasta tener un staging con una recuperación probada.
 
-La web consulta la API configurada; una API ausente produce un estado de error visible. Para REST al mismo origen, dejar `PUBLIC_API_URL` vacío y configurar `API_INTERNAL_URL=http://127.0.0.1:4000` en el servidor web. La sala usa snapshots HTTP periódicos y pujas REST. `PUBLIC_LIVE_AUCTIONS_ENABLED=false` conserva el transporte WS apagado hasta resolver su hallazgo de seguridad; no se sustituyen fallos por datos ficticios.
+## Levantar el MVP en local
 
-## API de desarrollo
+Requisitos: Node según [.nvmrc](.nvmrc), Docker (para PostgreSQL y Redis) y, opcionalmente, Python 3.12 para la IA.
 
-Después de configurar PostgreSQL/PostGIS y Redis con datos ficticios y revisar los destinos, arrancar desde la raíz:
+1. Instala las dependencias desde la raíz:
+   ```bash
+   npm ci
+   ```
+2. Levanta PostgreSQL/PostGIS y Redis:
+   ```bash
+   docker compose -f infrastructure/docker/compose.yaml up -d
+   ```
+3. Crea tu configuración local a partir de la plantilla de ejemplo de la raíz (`.env.example`): cópiala como `.env` y deja `RUN_MIGRATIONS_ON_START=true` y `START_WORKERS=true`, porque sin el worker los lotes no se cierran.
+4. Carga los datos de demostración (ficticios):
+   ```bash
+   npm run seed
+   ```
+5. Arranca la API, que escucha en el puerto 4000 y aplica las migraciones pendientes:
+   ```bash
+   npm run dev:api
+   ```
+6. En otra terminal, arranca la web en el puerto 3000:
+   ```bash
+   npm run dev:web
+   ```
+7. (Opcional) Arranca el satélite de IA en el puerto 8001:
+   ```bash
+   cd services/ai-satellite && python -m pip install -r requirements.txt && python run.py
+   ```
 
-```bash
-npm run dev:api
-```
-
-Para arrancar sin vigilancia, usar `npm run start:api`. Ambos comandos cargan el `.env` raíz si existe y respetan las variables ya inyectadas. El ejemplo fija `API_HOST=127.0.0.1`, `API_PORT=4000`, `RUN_MIGRATIONS_ON_START=false`, `START_WORKERS=false` y `PAYMENTS_ENABLED=false`. Nicolás y el responsable del entorno deben acordar la activación de migraciones y workers sobre una base ficticia aislada; sin workers no se acredita el cierre automático. La [guía de desarrollo](docs/DEVELOPMENT.md) describe el arranque, las variables y sus límites.
+Abre `http://127.0.0.1:3000`. Los usuarios de demostración y su contraseña local aparecen al final del `npm run seed`. **Fuera de local, el seed exige `SEED_PASSWORD`.**
 
 ## Validación
 

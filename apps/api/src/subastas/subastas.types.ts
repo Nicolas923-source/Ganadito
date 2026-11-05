@@ -9,9 +9,19 @@ export interface CrearLoteSubastaInput {
   anti_sniping_seconds?: number;
   anti_sniping_extension?: number;
   estado?: EstadoLote;
+  /** Qué se vende (opcional): cantidad, categoría zootécnica, raza, descripción y origen. */
+  cantidad_animales?: number;
+  categoria?: string;
+  raza?: string;
+  descripcion?: string;
+  /** Establecimiento de origen: debe ser de la organización vendedora. */
+  establecimiento_id?: string;
 }
 
-export interface LoteSubastaResponse {
+export type { DetalleLote, LoteCatalogo } from '@ganadito/contracts';
+import type { DetalleLote } from '@ganadito/contracts';
+
+export interface LoteSubastaResponse extends Partial<DetalleLote> {
   id: string;
   codigo_lote: string;
   vendedor_id: string;

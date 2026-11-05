@@ -22,11 +22,11 @@ test('publicación con HTTP 200 inesperado conserva resultado incierto y evita d
   await page.route('**/api/v1/subastas', route => route.fulfill({ status: 200,
     json: { id: 'unexpected-lot', codigo_lote: 'SIN-CONFIRMAR', estado: 'ACTIVO' } }));
   await page.goto('/subastas');
-  await page.getByLabel('Precio base (S/)').fill('100');
+  await page.getByLabel('Precio base del lote completo (S/)').fill('100');
   await page.getByLabel('Incremento mínimo (S/)').fill('10');
   await page.getByLabel('Fecha y hora local de cierre').fill('2099-12-31T18:00');
   await page.getByRole('button', { name: 'Publicar lote', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('resultado de la publicación es incierto');
+  await expect(page.getByRole('status').filter({ hasText: 'resultado de la publicación es incierto' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Publicar lote', exact: true })).toBeDisabled();
   await expect(page.getByRole('link', { name: 'Abrir lote publicado' })).toHaveCount(0);
 });

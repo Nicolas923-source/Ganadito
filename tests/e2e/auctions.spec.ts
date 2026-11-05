@@ -44,7 +44,7 @@ test('publication waits for the server and opens only the confirmed lot', async 
   });
   await page.goto('/subastas');
   await page.getByLabel('Código del lote (opcional)').fill('NUEVO-101');
-  await page.getByLabel('Precio base (S/)').fill('100');
+  await page.getByLabel('Precio base del lote completo (S/)').fill('100');
   await page.getByLabel('Incremento mínimo (S/)').fill('10');
   await page.getByLabel('Fecha y hora local de cierre').fill('2099-12-31T18:00');
   await page.getByRole('button', { name: 'Publicar lote' }).click();
@@ -498,4 +498,38 @@ test('HTTP polling cannot bid before a valid snapshot or after a failed refresh'
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
   await expect(page.getByRole('alert')).toContainText('Consulta no disponible.');
   await expect(page.getByRole('button', { name: 'Confirmar puja' })).toBeDisabled();
+});
+
+
+test('el catálogo muestra los lotes del servidor y "Mis lotes" pide mios=true; un error no se rellena con datos', async ({ page }) => {
+  await installSession(page, { role: 'VENDEDOR', organizationId: 'org-b' });
+  const pedidos: string[] = [];
+  const lote = (id: string, codigo: string, extra: Record<string, unknown> = {}) => ({
+    id, codigo_lote: codigo, estado: 'ACTIVO', precio_base: 4000, precio_actual: 4200, incremento_minimo: 100,
+    fecha_inicio: '2026-11-05T10:00:00Z', fecha_cierre: '2099-12-31T18:00:00Z', es_abierta: true, total_pujas: 2,
+    cantidad_animales: 12, categoria: 'TORETE', raza: 'Brown Swiss', descripcion: null, establecimiento_id: null,
+    origen: { ubigeo: '210101', latitud: -15.84, longitud: -70.02, ubicacion_aproximada: true },
+    peso_estimado_total_kg: 5100, es_mio: false, ...extra
+  });
+  await page.route('**/api/v1/subastas?*', route => {
+    const url = new URL(route.request().url());
+    pedidos.push(url.search);
+    return route.fulfill({ json: { data: url.searchParams.get('mios') === 'true'
+      ? [lote('9d1b1c34-6a8f-4c8e-9f2a-1a2b3c4d5e6f', 'MIO-1', { estado: 'BORRADOR', es_abierta: false, es_mio: true })]
+      : [lote('8c0a0b23-5a7e-4b7d-8e19-0a1b2c3d4e5f', 'PUBLICO-1')], next_cursor: null } });
+  });
+  await page.goto('/subastas');
+  const catalogo = page.getByRole('region', { name: 'Catálogo de lotes' });
+  await expect(catalogo.getByRole('link', { name: 'PUBLICO-1' })).toHaveAttribute('href', '/subastas/8c0a0b23-5a7e-4b7d-8e19-0a1b2c3d4e5f');
+  await expect(catalogo).toContainText('12 animales · TORETE · Brown Swiss');
+  await expect(catalogo).toContainText('ubicación aproximada');
+  await expect(catalogo).toContainText('precio total del lote');
+  await catalogo.getByRole('button', { name: 'Mis lotes' }).click();
+  await expect(catalogo.getByRole('link', { name: 'MIO-1' })).toBeVisible();
+  expect(pedidos.some(q => q.includes('mios=true'))).toBe(true);
+
+  await page.route('**/api/v1/subastas?*', route => route.fulfill({ status: 500, json: { message: 'caído' } }));
+  await catalogo.getByRole('button', { name: 'Lotes activos' }).click();
+  await expect(catalogo.getByRole('alert')).toBeVisible();
+  await expect(catalogo.getByRole('link', { name: 'PUBLICO-1' })).toHaveCount(0);
 });

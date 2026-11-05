@@ -135,6 +135,23 @@ Los contadores viven en memoria, en una sola instancia: con varias réplicas, ca
 
 ---
 
+## Catálogo de lotes [CAT]
+`GET /subastas?estado=&mios=true&limit=&cursor=`. La autenticación es opcional.
+- **Público:** por defecto solo lista lotes `ACTIVO`; con `estado=` se pueden ver `ADJUDICADO`, `DESIERTO`, `CERRADO` o `CANCELADO`. **Nunca lista un `BORRADOR`.**
+- **`mios=true`:** requiere sesión (si no, 401) y devuelve todos los lotes de la organización activa, borradores incluidos.
+- **Orden y paginación:** se ordena por `fecha_cierre` ascendente; `limit` va de 1 a 50 y el cursor es opaco.
+- `200 { data: LoteCatalogo[], next_cursor }`. El tipo `LoteCatalogo` está en `@ganadito/contracts`. Cada fila trae el detalle del lote, `es_abierta`, `total_pujas`, `peso_estimado_total_kg` (IA orientativa, no vinculante; `null` si no hay) y `origen`.
+- **`origen`:** trae `{ ubigeo, latitud, longitud, ubicacion_aproximada }` con la **posición pública**: un ESTABLO de otra organización se entrega aproximado (rejilla de 0.01°).
+
+**Detalle opcional al publicar** (`POST /subastas`):
+- `cantidad_animales`: entero de 1 a 10 000.
+- `categoria`: hasta 40 caracteres.
+- `raza`: hasta 60 caracteres.
+- `descripcion`: hasta 500 caracteres.
+- `establecimiento_id`: debe ser de la organización vendedora (si no, 403).
+
+**La puja sigue siendo por el precio total del lote.**
+
 ## 5. Tiempo real (WebSocket)
 
 **Ticket de conexión [WS-TICKET].** Un navegador no puede enviar `Authorization` en el upgrade, y antes el JWT viajaba en la URL. Ahora el cliente sigue dos pasos:
