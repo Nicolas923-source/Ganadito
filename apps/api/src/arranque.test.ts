@@ -73,6 +73,35 @@ describe('N01: arranque, health real, migraciones versionadas y workers', { conc
     }
   });
 
+  test('4b. Con configuración inválida en producción NO se migra (se valida antes de tocar la BD)', async () => {
+    const { startServer } = await import('./server.js');
+    const prev = { env: process.env.NODE_ENV, secret: process.env.JWT_SECRET };
+    let migro = false;
+    try {
+      process.env.NODE_ENV = 'production';
+      delete process.env.JWT_SECRET;
+      await assert.rejects(
+        () =>
+          startServer({
+            port: 0,
+            host: '127.0.0.1',
+            runMigrations: true,
+            startWorkers: false,
+            logger: false,
+            migrationRunner: async () => {
+              migro = true;
+              return { applied: [], skipped: [] } as any;
+            }
+          }),
+        /JWT_SECRET es obligatorio/
+      );
+      assert.strictEqual(migro, false, 'no debe migrar con la configuración inválida');
+    } finally {
+      process.env.NODE_ENV = prev.env;
+      if (prev.secret === undefined) delete process.env.JWT_SECRET; else process.env.JWT_SECRET = prev.secret;
+    }
+  });
+
   test('5. SubastasCloserWorker sigue ejecutando ciclos tras el primero y stop() lo detiene', async () => {
     let consultas = 0;
     const poolFalso = {
