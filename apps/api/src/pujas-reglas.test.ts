@@ -93,6 +93,34 @@ describe('N03: idempotencia de pujas, reglas de publicación y organización pos
     assert.strictEqual(lb.secuencia_maxima, 0, 'El otro lote no recibió pujas');
   });
 
+  test('1b. La misma clave tras cambiar de organización activa → 409 IDEMPOTENCY_KEY_OTRO_CONTEXTO (no repite la puja anterior)', async () => {
+    const lote = (await crearLote()).json().id;
+    const key = `k-${crypto.randomUUID()}`;
+    const primera = await pujar(comprador, lote, 1100, key);
+    assert.strictEqual(primera.statusCode, 201, primera.body);
+
+    // El comprador también es COMPRADOR en una segunda organización y cambia a ella.
+    const orgB = await pool.query<{ id: string }>(`INSERT INTO organizaciones (razon_social) VALUES ($1) RETURNING id`, [`Org B ${crypto.randomUUID().slice(0, 6)}`]);
+    await pool.query(
+      `INSERT INTO user_organizaciones_roles (user_id, organizacion_id, rol, is_active_context) VALUES ($1, $2, 'COMPRADOR', FALSE)`,
+      [comprador.userId, orgB.rows[0]!.id]
+    );
+    const orgOriginal = comprador.orgId;
+    await switchTo(comprador, orgB.rows[0]!.id, 'COMPRADOR');
+    try {
+      const otraOrg = await pujar(comprador, lote, 1100, key);
+      assert.strictEqual(otraOrg.statusCode, 409, otraOrg.body);
+      assert.strictEqual(otraOrg.json().code, 'IDEMPOTENCY_KEY_OTRO_CONTEXTO');
+      const n = await pool.query('SELECT count(*)::int AS n FROM subasta_pujas WHERE lote_id = $1', [lote]);
+      assert.strictEqual(n.rows[0].n, 1, 'no se crea una segunda puja');
+    } finally {
+      await switchTo(comprador, orgOriginal, 'COMPRADOR');
+    }
+    // De vuelta en la organización original, el reintento sí es una repetición.
+    const repetida = await pujar(comprador, lote, 1100, key);
+    assert.strictEqual(repetida.json().puja_id, primera.json().puja_id);
+  });
+
   test('2. Cinco envíos simultáneos con la misma clave: una sola puja, ninguna respuesta 500', async () => {
     const lote = (await crearLote()).json().id;
     const key = `k-${crypto.randomUUID()}`;

@@ -336,9 +336,9 @@ export class TrazabilidadService {
       [bovinoId]
     );
 
-    // Vista pública (QR): sin autor de cada evento y con la metadata sensible redactada
-    // (ubicación, documentos, contacto). Los hashes se conservan: la integridad se verifica
-    // con GET /bovinos/:id/verificar, que recalcula en el servidor.
+    // Vista pública (QR): sin autor, metadata por lista blanca y SIN hashes (un hash de un
+    // dato privado de baja entropía permite adivinarlo probando candidatos). La integridad
+    // se verifica con GET /bovinos/:id/verificar, que recalcula la cadena en el servidor.
     if (viewerOrgId && viewerOrgId === bovino.organizacion_id) {
       return { bovino, eventos: eventosRes.rows, vista: 'COMPLETA' };
     }
@@ -362,8 +362,6 @@ export class TrazabilidadService {
         secuencia: e.secuencia,
         event_type: e.event_type,
         metadata: proyectarMetadataPublica(e.event_type, e.metadata),
-        prev_hash: e.prev_hash,
-        current_hash: e.current_hash,
         autor_id: null,
         created_at: e.created_at
       })),

@@ -103,6 +103,7 @@ Cabecera `Idempotency-Key: <uuid generado por la web, uno por intento lógico>`.
 | Reintento con la misma clave y el mismo monto | 201, misma respuesta que la original | |
 | **[N03]** Misma clave con otro monto u otro lote | 422 | `IDEMPOTENCY_KEY_REUSED` |
 | **[N03]** La misma clave se está procesando en paralelo | 409 | `IDEMPOTENCY_IN_PROGRESS` |
+| **[IDEM-CTX]** La misma clave del mismo usuario después de **cambiar de organización activa** | 409 | `IDEMPOTENCY_KEY_OTRO_CONTEXTO`: generar una clave nueva; no se repite la puja de la otra organización |
 | Monto menor que `proxima_puja_minima` | 400 | `PUJA_INSUFICIENTE` |
 | El lote no está activo, expiró o **[N03]** todavía no empezó | 400 | `LOTE_NO_ABIERTO` |
 | **[N03]** El usuario pertenece a la organización vendedora (con cualquier rol) | 403 | `PUJA_PROPIO_LOTE` |

@@ -11,6 +11,7 @@ import type {
 export type CodigoErrorSubasta =
   | 'IDEMPOTENCY_KEY_REUSED'
   | 'IDEMPOTENCY_IN_PROGRESS'
+  | 'IDEMPOTENCY_KEY_OTRO_CONTEXTO'
   | 'PUJA_INSUFICIENTE'
   | 'LOTE_NO_ABIERTO'
   | 'PUJA_PROPIO_LOTE';
@@ -244,10 +245,10 @@ export class SubastasService {
       // 1. Reservar la clave. Si otra transacción la está insertando, este INSERT espera a que
       //    termine: si confirmó, no inserta (rowCount 0) y leemos su resultado; si revirtió, inserta.
       const reserva = await client.query(
-        `INSERT INTO idempotency_records (user_id, operation, key, payload_hash, status)
-         VALUES ($1, 'EMITIR_PUJA', $2, $3, 'PROCESANDO')
+        `INSERT INTO idempotency_records (user_id, operation, key, payload_hash, status, organizacion_id)
+         VALUES ($1, 'EMITIR_PUJA', $2, $3, 'PROCESANDO', $4)
          ON CONFLICT (user_id, operation, key) DO NOTHING`,
-        [userId, trimmedKey, payloadHash]
+        [userId, trimmedKey, payloadHash, activeOrgId]
       );
 
       if (reserva.rowCount === 0) {
@@ -255,8 +256,9 @@ export class SubastasService {
           status: string;
           payload_hash: string;
           response_body: PujaAceptadaResponse;
+          organizacion_id: string | null;
         }>(
-          `SELECT status, payload_hash, response_body
+          `SELECT status, payload_hash, response_body, organizacion_id
            FROM idempotency_records
            WHERE user_id = $1 AND operation = 'EMITIR_PUJA' AND key = $2
            FOR UPDATE`,
@@ -264,6 +266,16 @@ export class SubastasService {
         );
         const record = previo.rows[0];
 
+        // Misma clave desde OTRA organización activa: conflicto de contexto, nunca una
+        // repetición (devolvería una puja atribuida a la organización anterior).
+        // organizacion_id NULL = registro anterior a la migración 0014 (heredado).
+        if (record && record.organizacion_id !== null && record.organizacion_id !== activeOrgId) {
+          throw new SubastaError(
+            'La clave de idempotencia ya se usó con otra organización activa. Genere una clave nueva.',
+            409,
+            'IDEMPOTENCY_KEY_OTRO_CONTEXTO'
+          );
+        }
         if (record && record.payload_hash !== payloadHash) {
           throw new SubastaError(
             'La clave de idempotencia ya se usó con otra solicitud (lote o monto distinto).',
