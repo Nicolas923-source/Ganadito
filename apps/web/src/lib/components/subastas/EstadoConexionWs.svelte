@@ -1,5 +1,5 @@
 <script lang="ts">
-  export type EstadoConexion = 'CONECTADO' | 'SINCRONIZANDO' | 'RECONECTANDO' | 'DESCONECTADO';
+  export type EstadoConexion = 'CONECTADO' | 'PERIODICO' | 'SINCRONIZANDO' | 'RECONECTANDO' | 'DESCONECTADO';
 
   interface Props {
     estado: EstadoConexion;
@@ -22,7 +22,7 @@
   class:text-rose-300={estado === 'RECONECTANDO' || estado === 'DESCONECTADO'}
   class:border-rose-500-40={estado === 'RECONECTANDO' || estado === 'DESCONECTADO'}
   style="
-    {estado === 'CONECTADO'
+    {estado === 'CONECTADO' || estado === 'PERIODICO'
       ? 'background-color: rgba(16, 185, 129, 0.12); border-color: rgba(16, 185, 129, 0.35); color: #6ee7b7;'
       : estado === 'SINCRONIZANDO'
         ? 'background-color: rgba(245, 158, 11, 0.12); border-color: rgba(245, 158, 11, 0.35); color: #fcd34d;'
@@ -33,7 +33,7 @@
 >
   <!-- Indicador luminoso / ping -->
   <span class="relative flex h-2.5 w-2.5">
-    {#if estado === 'CONECTADO'}
+    {#if estado === 'CONECTADO' || estado === 'PERIODICO'}
       <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
       <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
     {:else if estado === 'SINCRONIZANDO'}
@@ -45,7 +45,9 @@
   </span>
 
   <span class="font-semibold tracking-wide">
-    {#if estado === 'CONECTADO'}
+    {#if estado === 'PERIODICO'}
+      Actualización periódica
+    {:else if estado === 'CONECTADO'}
       En Vivo
     {:else if estado === 'SINCRONIZANDO'}
       Sincronizando

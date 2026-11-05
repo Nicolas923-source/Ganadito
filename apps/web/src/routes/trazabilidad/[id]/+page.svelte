@@ -1,267 +1,128 @@
 <script lang="ts">
-  import { browser } from '$app/environment';
+  import { untrack } from 'svelte';
   import { page } from '$app/state';
-  import type {
-    Bovino,
-    EventoTrazabilidad,
-    PasaporteDigitalResponse,
-    VerificacionCadenaResponse
-  } from '@ganadito/contracts';
+  import { apiRequest } from '#lib/api.ts';
+  import { session } from '#lib/session.ts';
+  import type { PasaporteDigitalResponse, VerificacionCadenaResponse } from '@ganadito/contracts';
+  import FichaBovinoHeader from '#lib/components/trazabilidad/FichaBovinoHeader.svelte';
+  import CertificadoAuditoria from '#lib/components/trazabilidad/CertificadoAuditoria.svelte';
+  import LineaTiempoEventos from '#lib/components/trazabilidad/LineaTiempoEventos.svelte';
 
-  import FichaBovinoHeader from '../../../lib/components/trazabilidad/FichaBovinoHeader.svelte';
-  import CertificadoAuditoria from '../../../lib/components/trazabilidad/CertificadoAuditoria.svelte';
-  import LineaTiempoEventos from '../../../lib/components/trazabilidad/LineaTiempoEventos.svelte';
-  import RegistrarEventoModal from '../../../lib/components/trazabilidad/RegistrarEventoModal.svelte';
-
-  let bovinoId = $derived(
-    page?.params?.id ||
-      (browser ? window.location.pathname.split('/')[2] || 'bov-demo-01' : 'bov-demo-01')
-  );
-
-  let apiBaseUrl = $derived(
-    browser
-      ? import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:3000`
-      : 'http://localhost:3000'
-  );
-
-  let authToken = $state<string | null>(null);
-
-  $effect(() => {
-    if (browser) {
-      authToken = localStorage.getItem('token');
-    }
-  });
-
-  let bovino = $state<Bovino | null>(null);
-  let eventos = $state<EventoTrazabilidad[]>([]);
+  let identificador = $derived(page.params.id ?? '');
+  let pasaporte = $state<PasaporteDigitalResponse | null>(null);
   let verificacion = $state<VerificacionCadenaResponse | null>(null);
+  let cargando = $state(false);
+  let auditando = $state(false);
+  let errorConsulta = $state('');
+  let errorAuditoria = $state('');
+  let peticion: AbortController | undefined;
+  let peticionAuditoria: AbortController | undefined;
 
-  let isLoading = $state(true);
-  let isAuditing = $state(false);
-  let errorMessage = $state<string | null>(null);
-  let modalRegistrarAbierto = $state(false);
-
-  // Datos de fallback demostrativos
-  const BOVINO_DEMO: Bovino = {
-    id: 'bov-demo-01',
-    codigo_arete: 'PE-2026-904812',
-    organizacion_id: 'org-ganaderia-san-pedro',
-    raza: 'Brahman x Nelore F1',
-    sexo: 'MACHO',
-    fecha_nacimiento: '2024-03-15T00:00:00.000Z',
-    estado: 'FAENADO'
-  };
-
-  const EVENTOS_DEMO: EventoTrazabilidad[] = [
-    {
-      id: 1,
-      bovino_id: 'bov-demo-01',
-      secuencia: 1,
-      event_type: 'REGISTRO_INICIAL',
-      metadata: {
-        peso_nacimiento_kg: 34.5,
-        tipo_parto: 'EUTOCICO_NATURAL',
-        madre_arete: 'PE-2021-004128',
-        fundo_nacimiento: 'Fundo San José, Oxapampa'
-      },
-      prev_hash: '0'.repeat(64),
-      current_hash: '8f4327bc49b1a030ef1d48c801452a229a1740fb875bcbc5716e257008cf142e',
-      autor_id: 'usr-veterinario-01',
-      created_at: '2024-03-15T10:00:00.000Z'
-    },
-    {
-      id: 2,
-      bovino_id: 'bov-demo-01',
-      secuencia: 2,
-      event_type: 'VACUNACION',
-      metadata: {
-        vacuna: 'Fiebre Aftosa Bivalente',
-        lote: 'SENASA-2024-LOT-48',
-        dosis_ml: 2.0,
-        campana_oficial: 'I-2024'
-      },
-      prev_hash: '8f4327bc49b1a030ef1d48c801452a229a1740fb875bcbc5716e257008cf142e',
-      current_hash: '3bc94120f26388410ee749171a81dc41b44ec0b57fa23933e4b7796dcb212e10',
-      autor_id: 'usr-senasa-inspector',
-      created_at: '2024-06-20T14:30:00.000Z'
-    },
-    {
-      id: 3,
-      bovino_id: 'bov-demo-01',
-      secuencia: 3,
-      event_type: 'MOVILIZACION_CSTI',
-      metadata: {
-        guia_senasa: 'CSTI-2026-0048192-SENASA',
-        origen: 'Fundo San José, Oxapampa',
-        destino: 'Camal Frigorífico Metropolitano, Lurín Km 32',
-        placa_camion: 'ABC-982',
-        precinto_seguridad: 'PRC-9912'
-      },
-      prev_hash: '3bc94120f26388410ee749171a81dc41b44ec0b57fa23933e4b7796dcb212e10',
-      current_hash: 'c81e728d9d4c2f636f067f89cc14862c1ecd73ff6fb07a0d4c885e3d74944cf9',
-      autor_id: 'usr-senasa-garita',
-      created_at: '2026-10-28T06:15:00.000Z'
-    },
-    {
-      id: 4,
-      bovino_id: 'bov-demo-01',
-      secuencia: 4,
-      event_type: 'PESAJE_CAMAL',
-      metadata: {
-        peso_vivo_kg: 495.0,
-        peso_canal_caliente_kg: 284.5,
-        rendimiento_canal_pct: 57.47,
-        dictamen_post_mortem: 'APTO PARA CONSUMO HUMANO',
-        medico_veterinario: 'Dr. Carlos Mendoza CMVP 4921'
-      },
-      prev_hash: 'c81e728d9d4c2f636f067f89cc14862c1ecd73ff6fb07a0d4c885e3d74944cf9',
-      current_hash: 'a90e3f283c7b640098df2401bc775411782e4f014897210e3ca57c6b90740922',
-      autor_id: 'usr-camal-lurin',
-      created_at: '2026-10-29T08:45:00.000Z'
+  function esObjeto(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+  }
+  function esPasaporte(value: unknown, id: string): value is PasaporteDigitalResponse {
+    if (!esObjeto(value) || !esObjeto(value.bovino)) return false;
+    const bovino = value.bovino;
+    if (bovino.id !== id ||
+        !['codigo_arete', 'organizacion_id', 'sexo', 'estado'].every(key => typeof bovino[key] === 'string') ||
+        !(bovino.raza === null || typeof bovino.raza === 'string') ||
+        !(bovino.fecha_nacimiento === null || (typeof bovino.fecha_nacimiento === 'string' && Number.isFinite(Date.parse(bovino.fecha_nacimiento)))) ||
+        !Array.isArray(value.eventos)) return false;
+    const secuencias = new Set<number>();
+    for (const evento of value.eventos) {
+      if (!esObjeto(evento) || evento.bovino_id !== id || typeof evento.secuencia !== 'number' || !Number.isInteger(evento.secuencia) ||
+          secuencias.has(evento.secuencia) || typeof evento.event_type !== 'string' || typeof evento.autor_id !== 'string' ||
+          !esObjeto(evento.metadata) || typeof evento.prev_hash !== 'string' || typeof evento.current_hash !== 'string' ||
+          !/^[a-f0-9]{64}$/i.test(evento.prev_hash) || !/^[a-f0-9]{64}$/i.test(evento.current_hash) ||
+          typeof evento.created_at !== 'string' || !Number.isFinite(Date.parse(evento.created_at))) return false;
+      secuencias.add(evento.secuencia);
     }
-  ];
+    return true;
+  }
+  function esVerificacion(value: unknown): value is VerificacionCadenaResponse {
+    return esObjeto(value) && typeof value.integro === 'boolean' && typeof value.total_eventos === 'number' && Number.isInteger(value.total_eventos) && value.total_eventos >= 0 &&
+      (value.secuencia_corrupta === undefined || (typeof value.secuencia_corrupta === 'number' && Number.isInteger(value.secuencia_corrupta))) &&
+      (value.detalle === undefined || typeof value.detalle === 'string');
+  }
 
-  async function cargarPasaporte() {
-    isLoading = true;
-    errorMessage = null;
-
+  async function cargar(id: string) {
+    peticion?.abort();
+    peticionAuditoria?.abort();
+    const controller = new AbortController();
+    peticion = controller;
+    pasaporte = null;
+    verificacion = null;
+    errorConsulta = '';
+    errorAuditoria = '';
+    auditando = false;
+    cargando = true;
     try {
-      const res = await fetch(`${apiBaseUrl}/api/v1/trazabilidad/bovinos/${bovinoId}/pasaporte`);
-      if (res.ok) {
-        const data = (await res.json()) as PasaporteDigitalResponse;
-        bovino = data.bovino;
-        eventos = data.eventos;
-      } else {
-        // Fallback a demo si el ID es demostrativo o no existe en DB local
-        bovino = BOVINO_DEMO;
-        eventos = EVENTOS_DEMO;
+      const data = await apiRequest<unknown>('/api/v1/trazabilidad/bovinos/' + encodeURIComponent(id) + '/pasaporte', { signal: controller.signal });
+      if (!esPasaporte(data, id)) {
+        throw new Error('La API no devolvió un pasaporte válido para el bovino solicitado.');
       }
-    } catch {
-      bovino = BOVINO_DEMO;
-      eventos = EVENTOS_DEMO;
+      if (!controller.signal.aborted) pasaporte = data;
+    } catch (error) {
+      if (!controller.signal.aborted) errorConsulta = error instanceof Error ? error.message : 'No se pudo consultar el pasaporte.';
     } finally {
-      isLoading = false;
-      await ejecutarAuditoria();
+      if (!controller.signal.aborted) cargando = false;
     }
   }
 
-  async function ejecutarAuditoria() {
-    isAuditing = true;
-
+  async function auditar() {
+    if (!pasaporte || auditando) return;
+    peticionAuditoria?.abort();
+    const controller = new AbortController();
+    peticionAuditoria = controller;
+    const id = identificador;
+    auditando = true;
+    verificacion = null;
+    errorAuditoria = '';
     try {
-      const res = await fetch(`${apiBaseUrl}/api/v1/trazabilidad/bovinos/${bovinoId}/verificar`);
-      if (res.ok) {
-        verificacion = (await res.json()) as VerificacionCadenaResponse;
-      } else {
-        verificacion = {
-          integro: true,
-          total_eventos: eventos.length
-        };
-      }
-    } catch {
-      verificacion = {
-        integro: true,
-        total_eventos: eventos.length
-      };
+      const data = await apiRequest<unknown>('/api/v1/trazabilidad/bovinos/' + encodeURIComponent(id) + '/verificar', { signal: controller.signal });
+      if (!esVerificacion(data)) throw new Error('La API no devolvió una verificación válida.');
+      if (!controller.signal.aborted && identificador === id) verificacion = data;
+    } catch (error) {
+      if (!controller.signal.aborted) errorAuditoria = error instanceof Error ? error.message : 'No se pudo verificar la cadena.';
     } finally {
-      isAuditing = false;
+      if (!controller.signal.aborted) auditando = false;
     }
   }
 
   $effect(() => {
-    if (bovinoId) {
-      cargarPasaporte();
-    }
+    const id = identificador;
+    const estado = $session.status;
+    $session.token;
+    $session.organizationId;
+    untrack(() => {
+      peticion?.abort();
+      peticionAuditoria?.abort();
+      pasaporte = null;
+      verificacion = null;
+      errorConsulta = '';
+      errorAuditoria = '';
+      cargando = false;
+      auditando = false;
+      if (estado === 'authenticated' && id) void cargar(id);
+    });
+    return () => { peticion?.abort(); peticionAuditoria?.abort(); };
   });
-
-  function handleEventoRegistrado(nuevoEvento: EventoTrazabilidad) {
-    eventos = [...eventos, nuevoEvento];
-    if (nuevoEvento.event_type === 'PESAJE_CAMAL' && bovino) {
-      bovino = { ...bovino, estado: 'FAENADO' };
-    }
-    ejecutarAuditoria();
-  }
 </script>
 
-<svelte:head>
-  <title>Pasaporte Digital Bovino & Auditoría Criptográfica | Ganadito</title>
-</svelte:head>
-
-<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-  <!-- Cabecera de Navegación del Módulo -->
-  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
-    <div>
-      <div class="flex items-center gap-2 mb-1">
-        <a href="/" class="text-xs text-slate-400 hover:text-emerald-400 transition-colors">
-          Inicio
-        </a>
-        <span class="text-xs text-slate-600">/</span>
-        <span class="text-xs text-emerald-400 font-semibold">Trazabilidad Bovina</span>
-      </div>
-      <h1 class="text-2xl font-black text-white tracking-tight flex items-center gap-2">
-        <span>Pasaporte Digital Bovino</span>
-        <span class="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-          Event Sourcing Inmutable
-        </span>
-      </h1>
-    </div>
-
-    <!-- Botones de Acción -->
-    <div class="flex flex-wrap items-center gap-3">
-      <a
-        href={`/trazabilidad/${bovinoId}/publico`}
-        class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 transition-colors flex items-center gap-1.5"
-      >
-        <span>📱 Vista Pública QR</span>
-      </a>
-
-      <button
-        type="button"
-        onclick={() => (modalRegistrarAbierto = true)}
-        class="px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-600/25 transition-all flex items-center gap-2"
-      >
-        <span>+ Registrar Hito Pecuario</span>
-      </button>
-    </div>
-  </div>
-
-  {#if isLoading}
-    <!-- Skeleton Loaders -->
-    <div class="space-y-6 animate-pulse">
-      <div class="h-48 bg-slate-900 rounded-3xl border border-slate-800"></div>
-      <div class="h-24 bg-slate-900 rounded-2xl border border-slate-800"></div>
-      <div class="h-64 bg-slate-900 rounded-2xl border border-slate-800"></div>
-    </div>
-  {:else if bovino}
-    <!-- Ficha Zootécnica Principal -->
-    <FichaBovinoHeader {bovino} />
-
-    <!-- Sello y Certificado de Auditoría Criptográfica -->
-    <CertificadoAuditoria
-      {verificacion}
-      isLoading={isAuditing}
-      onReverificar={ejecutarAuditoria}
-    />
-
-    <!-- Línea de Tiempo Cronológica Inmutable -->
-    <LineaTiempoEventos {eventos} />
-  {:else}
-    <div class="p-12 bg-slate-900 border border-slate-800 rounded-3xl text-center space-y-4">
-      <div class="text-4xl">🐮</div>
-      <h3 class="text-lg font-bold text-white">Bovino no encontrado</h3>
-      <p class="text-xs text-slate-400 max-w-sm mx-auto">
-        El identificador especificado no cuenta con registros en el libro mayor de trazabilidad.
-      </p>
-    </div>
-  {/if}
+<svelte:head><title>Pasaporte bovino | Ganadito</title></svelte:head>
+<div class="max-w-6xl mx-auto w-full px-4 py-8 space-y-6">
+  <div class="flex flex-wrap justify-between items-start gap-4"><div><a class="text-sm text-emerald-400 hover:underline" href="/trazabilidad">Buscar otro bovino</a><h1 class="text-3xl font-bold text-white mt-2">Pasaporte bovino</h1><p class="text-sm text-slate-400 mt-2 break-all">Identificador solicitado: {identificador}</p></div><button type="button" class="rounded-xl border border-slate-700 px-4 py-2 text-slate-200 disabled:opacity-50" disabled={cargando || $session.status !== 'authenticated'} onclick={() => void cargar(identificador)}>Actualizar pasaporte</button></div>
+  {#if $session.status === 'checking'}<p role="status" class="text-slate-400">Comprobando sesión…</p>
+  {:else if $session.status !== 'authenticated'}<div class="rounded-2xl border border-slate-800 bg-slate-900 p-6"><p class="text-slate-300">Inicia sesión para consultar este pasaporte.</p><a href="/acceso" class="inline-block text-emerald-400 mt-3">Ir al acceso</a></div>
+  {:else if cargando}<p role="status" class="rounded-xl bg-slate-900 p-6 text-slate-400">Consultando pasaporte…</p>
+  {:else if errorConsulta}<p role="alert" class="rounded-xl border border-rose-800 bg-rose-950/40 p-5 text-rose-200">{errorConsulta}</p>
+  {:else if pasaporte}
+    <FichaBovinoHeader bovino={pasaporte.bovino} />
+    <p class="text-sm text-slate-400">Los datos y eventos provienen del registro consultado. La integridad de la cadena no acredita certificaciones sanitarias ni verifica el contenido declarado.</p>
+    <CertificadoAuditoria {verificacion} isLoading={auditando} onReverificar={() => void auditar()} />
+    {#if errorAuditoria}<p role="alert" class="rounded-xl border border-rose-800 bg-rose-950/40 p-4 text-rose-200">{errorAuditoria}</p>{/if}
+    <LineaTiempoEventos eventos={pasaporte.eventos} />
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-5 text-sm text-slate-400"><button type="button" disabled class="rounded-lg bg-slate-800 px-4 py-2 opacity-60">Registrar evento no disponible</button><p class="mt-2">El registro de nuevos eventos y la publicación de un pasaporte público todavía no están habilitados.</p></div>
+  {:else}<p role="status" class="text-slate-400">No hay un pasaporte disponible para esta consulta.</p>{/if}
 </div>
-
-<!-- Modal para Registrar Nuevo Hito -->
-<RegistrarEventoModal
-  isOpen={modalRegistrarAbierto}
-  {bovinoId}
-  {apiBaseUrl}
-  {authToken}
-  onCerrar={() => (modalRegistrarAbierto = false)}
-  onEventoRegistrado={handleEventoRegistrado}
-/>

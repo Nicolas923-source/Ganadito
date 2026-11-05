@@ -1,52 +1,55 @@
-# Ganadito — Plataforma Ganadera y Comercial
+# Ganadito
 
-> **Estado actual del proyecto:** Fase 1 — Preparación oficial del repositorio y entorno de desarrollo. No apto ni destinado aún para producción. No se ha implementado código funcional de negocio.
+Plataforma ganadera y comercial construida como monolito modular: SvelteKit/TypeScript en `apps/web`, Fastify/TypeScript en `apps/api`, contratos en `packages/contracts` y PostgreSQL/PostGIS como autoridad transaccional. Redis se usa para caché y difusión de eventos.
 
----
+El recorrido inicial es acceso y organización → lote → puja → cierre → orden pendiente de pago. Esta rama de integración ([PR #37](https://github.com/Nicolas923-source/Ganadito/pull/37)) reúne la web de Víctor con los commits originales N01–N05 de Nicolás y el contrato aprobado #29. Ya incluye arranque HTTP, órdenes REST y una prueba real del recorrido con PostgreSQL, Redis y worker en CI. El catálogo de subastas sigue pendiente: la consulta actual es por identificador.
 
-## 1. Visión general
+La [CI del código integrado](https://github.com/Nicolas923-source/Ganadito/actions/runs/41885077011) pasó sobre `27c3cd8`: 108 pruebas backend, 56 de navegador con fixtures, dos del modo HTTP y un recorrido real completo, además de tipos y compilación. Esto no sustituye las correcciones pendientes ni la revisión humana cruzada. Estado por PR: [revisión de Nicolás](docs/REVIEW_NICOLAS_2026-11-04.md). Producción, cobros reales e integraciones externas no habilitadas permanecen desactivados.
 
-**Ganadito** es una plataforma digital integral orientada a modernizar y dinamizar el ecosistema comercial ganadero en el Perú, facilitando la interacción transparente y confiable entre ganaderos, compradores, camales, transportistas y entidades del sector.
+## Desarrollo web
 
-## 2. Arquitectura de alto nivel
+Se requiere Node según [.nvmrc](.nvmrc) y npm compatible con [package.json](package.json). Instalar el lockfile desde la raíz:
 
-El proyecto está diseñado bajo un modelo de **monolito modular con arquitectura hexagonal y CQRS selectivo**:
-- **`apps/web`**: Frontend web interactivo construido con **SvelteKit** y **TypeScript**.
-- **`apps/api`**: Backend transaccional de alto rendimiento construido con **Node.js**, **Fastify** y **TypeScript**.
-- **`packages/contracts`**: Esquemas de datos, DTOs y contratos compartidos fuertemente tipados.
-- **`packages/shared`**: Utilidades puras transversales.
-- **`packages/config`**: Configuraciones compartidas de compilación, linter y tipos.
-- **`services/ai`**: Servicio satélite para modelos de visión artificial y análisis de ganado (**Python 3.11/3.12**), desacoplado del núcleo transaccional.
-- **Persistencia**: **PostgreSQL 16** con extensión **PostGIS 3.4** como única fuente de verdad transaccional y geoespacial.
-- **Caché y mensajería efímera**: **Redis 7** (sin rol de persistencia autoritativa).
+```bash
+npm ci
+npm run dev:web -- --host 127.0.0.1 --port 4173 --strictPort
+```
 
----
+La web consulta la API configurada; una API ausente produce un estado de error visible. Para REST al mismo origen, dejar `PUBLIC_API_URL` vacío y configurar `API_INTERNAL_URL=http://127.0.0.1:4000` en el servidor web. La sala usa snapshots HTTP periódicos y pujas REST. `PUBLIC_LIVE_AUCTIONS_ENABLED=false` conserva el transporte WS apagado hasta resolver su hallazgo de seguridad; no se sustituyen fallos por datos ficticios.
 
-## 3. Requisitos de desarrollo verificados
+## API de desarrollo
 
-| Herramienta | Versión verificada en entorno |
-|---|---|
-| **Node.js** | `v24.20.0` (fijado en `.nvmrc`) |
-| **npm** | `11.19.0` |
-| **Git** | `2.56.0` |
-| **Python** | `3.12.8` (para `services/ai`) |
-| **Docker Engine** | `29.7.2` |
-| **Docker Compose** | Compatible con v2 |
+Después de configurar PostgreSQL/PostGIS y Redis con datos ficticios y revisar los destinos, arrancar desde la raíz:
 
----
+```bash
+npm run dev:api
+```
 
-## 4. Guías y Documentación
+Para arrancar sin vigilancia, usar `npm run start:api`. Ambos comandos cargan el `.env` raíz si existe y respetan las variables ya inyectadas. El ejemplo fija `API_HOST=127.0.0.1`, `API_PORT=4000`, `RUN_MIGRATIONS_ON_START=false`, `START_WORKERS=false` y `PAYMENTS_ENABLED=false`. Nicolás y el responsable del entorno deben acordar la activación de migraciones y workers sobre una base ficticia aislada; sin workers no se acredita el cierre automático. La [guía de desarrollo](docs/DEVELOPMENT.md) describe el arranque, las variables y sus límites.
 
-Para comenzar a trabajar en el proyecto, consulta la documentación oficial en el directorio `docs/`:
+## Validación
 
-- 🚀 [**Guía de instalación y entorno local (`docs/DEVELOPMENT.md`)**](file:///d:/Copia%20-%20VISUAL%20CODE%20-%20Proyectos/Ganadito%20Versi%C3%B3n%201.0/docs/DEVELOPMENT.md): Instrucciones paso a paso para configurar tu máquina, variables de entorno, Docker y comandos de ejecución.
-- 🌿 [**Flujo de trabajo y Git (`docs/GIT_WORKFLOW.md`)**](file:///d:/Copia%20-%20VISUAL%20CODE%20-%20Proyectos/Ganadito%20Versi%C3%B3n%201.0/docs/GIT_WORKFLOW.md): Reglas de ramas, commits convencionales, flujo de Pull Requests y protocolo ante fuga de secretos.
-- 🏛️ [**Arquitectura técnica y límites (`docs/ARCHITECTURE.md`)**](file:///d:/Copia%20-%20VISUAL%20CODE%20-%20Proyectos/Ganadito%20Versi%C3%B3n%201.0/docs/ARCHITECTURE.md): Principios arquitectónicos, responsabilidades por módulo y decisiones registradas.
-- 🤖 [**Reglas operativas para Agentes de IA (`AGENTS.md`)**](file:///d:/Copia%20-%20VISUAL%20CODE%20-%20Proyectos/Ganadito%20Versi%C3%B3n%201.0/AGENTS.md): Directrices y prioridades de trabajo para asistentes automatizados en Antigravity.
+```bash
+npm run typecheck
+npm run lint
+npm test
+npm run build
+npx playwright install --with-deps chromium
+npm run test:e2e
+npm run test:e2e:http
+npm run test:config
+```
 
----
+Los tests backend requieren PostgreSQL/PostGIS y Redis aislados. `test:e2e` y `test:e2e:http` usan fixtures identificados; `test:config` comprueba el entorno sin conectar a servicios. `test:e2e:real` es una suite separada con API y persistencia reales que la CI ejecuta únicamente sobre PostGIS/Redis efímeros, con guardias de destino y pagos apagados. Su [configuración aislada](docs/DEVELOPMENT.md#navegador-con-api-y-persistencia-reales-en-ci) rechaza destinos remotos o distintos del destino de prueba permitido; no usar bases compartidas, el PostgreSQL local existente ni Neon para ese comando. Consultar resultados y límites del SHA final en CI y en el PR. No almacenar secretos ni datos reales en reportes.
 
-## 5. Reporte de incidencias y contribución
+## Trabajo entre Víctor y Nicolás
 
-- Para proponer nuevas funciones o reportar fallos, abre un Issue en GitHub utilizando las plantillas disponibles en [`.github/ISSUE_TEMPLATE/`](file:///d:/Copia%20-%20VISUAL%20CODE%20-%20Proyectos/Ganadito%20Versi%C3%B3n%201.0/.github/ISSUE_TEMPLATE/).
-- Todo cambio debe integrarse a través de Pull Request siguiendo la plantilla [`.github/PULL_REQUEST_TEMPLATE.md`](file:///d:/Copia%20-%20VISUAL%20CODE%20-%20Proyectos/Ganadito%20Versi%C3%B3n%201.0/.github/PULL_REQUEST_TEMPLATE.md).
+- [Instalación, comandos y variables](docs/DEVELOPMENT.md).
+- [Propiedad de archivos y reservas](docs/OWNERSHIP.md).
+- [Entregas V01-V06 y cola de PR](docs/VICTOR_DELIVERY.md).
+- [Inventario de contratos y solicitudes a Nicolás](docs/CONTRACT_REVIEW.md).
+- [Ramas, revisión cruzada e integración](docs/GIT_WORKFLOW.md).
+- [Staging, versión y recuperación](infrastructure/deployment/README.md).
+- [Arquitectura](docs/ARCHITECTURE.md) y [reglas de agentes](AGENTS.md).
+
+Cada entrega requiere rutas asignadas, contrato identificado, pruebas pertinentes y revisión del otro programador. Las dependencias se publican en PR separado. Reportar incidencias usando las [plantillas](.github/ISSUE_TEMPLATE/) y describir alcance, evidencia y limitaciones en el [PR](.github/PULL_REQUEST_TEMPLATE.md).

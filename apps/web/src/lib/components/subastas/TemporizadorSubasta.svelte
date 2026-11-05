@@ -16,6 +16,7 @@
   let ultimaFechaCierre = $state('');
   let destelloAntiSniping = $state(false);
   let destelloTimeout: any = null;
+  let notifiedDeadline = '';
 
   // Detectar si la fecha de cierre se extendió por anti-sniping
   $effect(() => {
@@ -54,7 +55,8 @@
     tiempoRestanteMs = diff;
     segundosRestantes = Math.floor(diff / 1000);
 
-    if (diff === 0 && estadoLote === 'ACTIVO') {
+    if (diff === 0 && estadoLote === 'ACTIVO' && notifiedDeadline !== fechaCierre) {
+      notifiedDeadline = fechaCierre;
       onFinalizado?.();
     }
   }
@@ -74,9 +76,9 @@
     estadoLote === 'ADJUDICADO' ||
     estadoLote === 'DESIERTO' ||
     estadoLote === 'CERRADO' ||
-    estadoLote === 'CANCELADO' ||
-    segundosRestantes <= 0
+    estadoLote === 'CANCELADO'
   );
+  let esperandoCierre = $derived(!esFinalizada && segundosRestantes <= 0);
 
   let esUltimosSegundos = $derived(!esFinalizada && segundosRestantes > 0 && segundosRestantes <= 60);
 
@@ -125,6 +127,8 @@
           <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-slate-800 text-slate-300">
             FINALIZADA
           </span>
+        {:else if esperandoCierre}
+          <span class="text-amber-300">ESPERANDO CONFIRMACIÓN DE CIERRE</span>
         {:else}
           <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
             EN VIVO

@@ -38,7 +38,7 @@
             <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
           </svg>
         </div>
-        <p class="text-xs font-medium">Aún no se han registrado pujas para este lote.</p>
+        <p class="text-xs font-medium">No se recibieron pujas durante esta visita.</p>
         <p class="text-[11px] text-slate-500">Precio base de apertura: <span class="font-bold text-slate-300 font-mono">S/ {precioBase.toFixed(2)}</span></p>
       </div>
     {:else}
@@ -64,7 +64,7 @@
                 </span>
                 {#if index === 0}
                   <span class="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                    LÍDER
+                    ÚLTIMA RECIBIDA
                   </span>
                 {/if}
               </div>
@@ -84,11 +84,11 @@
             </div>
             {#if index === 0}
               <div class="text-[9px] text-emerald-400/80 font-medium uppercase tracking-wider">
-                Puja Ganadora
+                Última puja recibida
               </div>
             {:else}
               <div class="text-[9px] text-slate-500 uppercase">
-                Superada
+                Puja recibida
               </div>
             {/if}
           </div>
