@@ -298,11 +298,12 @@ test('V05 cambiar de organización cancela el pasaporte y la auditoría pendient
   await page.getByRole('navigation').getByRole('link', { name: 'Trazabilidad', exact: true }).click();
   await page.getByLabel('Identificador del bovino').fill('contexto');
   await page.getByRole('button', { name: 'Consultar pasaporte', exact: true }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'vista completa no está disponible' })).toBeVisible();
+  // El nuevo contexto recibe la vista PUBLICA; la COMPLETA y la auditoría del contexto
+  // anterior, liberadas tarde, no deben pintarse sobre ella.
+  await expect(page.getByRole('status').filter({ hasText: 'Vista pública' })).toBeVisible();
   liberarPasaporte!();
   liberarAuditoria!();
-  await expect(page.getByRole('heading', { name: 'ARETE-contexto', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Verificar cadena', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('status').filter({ hasText: 'Vista pública' })).toBeVisible();
   await expect(page.getByText(/servidor confirmó la integridad|Hash Previo|USR-user-a/)).toHaveCount(0);
 });
 
@@ -381,9 +382,14 @@ test('un rechazo de trazabilidad no muestra el pasaporte y la vista pública no 
   await page.goto('/trazabilidad/ajeno');
   await expect(page.getByRole('alert').filter({ hasText: 'Acceso denegado' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Verificar cadena', exact: true })).toHaveCount(0);
+  // La ruta del QR consulta SIN token y muestra el rechazo de la API, sin datos.
+  const autorizaciones: (string | undefined)[] = [];
+  page.on('request', r => { if (r.url().includes('/pasaporte')) autorizaciones.push(r.headers()['authorization']); });
   await page.goto('/trazabilidad/ajeno/publico');
-  await expect(page.getByRole('heading', { name: 'Consulta pública no disponible' })).toBeVisible();
-  expect(consultas).toBe(1);
+  await expect(page.getByRole('alert').filter({ hasText: 'Acceso denegado' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Verificar cadena', exact: true })).toHaveCount(0);
+  expect(consultas).toBe(2);
+  expect(autorizaciones).toEqual([undefined]);
 });
 
 test('los nombres del mapa se muestran como texto y no ejecutan HTML recibido por la API', async ({ page }) => {

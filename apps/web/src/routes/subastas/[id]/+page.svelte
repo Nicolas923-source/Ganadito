@@ -146,7 +146,6 @@
         socket = transport;
         transport.onopen = () => {
           if (disposed || socket !== transport) return;
-          ticketRetried = false;
           openedAt = Date.now();
           // Recover official state on every connection, including the first one.
           connection = 'SINCRONIZANDO';
@@ -173,6 +172,9 @@
         };
         transport.onclose = (event) => {
           if (disposed || socket !== transport) return;
+          // Solo una conexión que vivió lo suficiente rehabilita el reintento de ticket: el
+          // servidor acepta el upgrade y LUEGO cierra con 1008, así que onopen no basta.
+          if (openedAt > 0 && Date.now() - openedAt >= VIDA_MINIMA_MS) ticketRetried = false;
           if (event.code === 1008) {
             // Vida máxima cumplida (15 min o exp del JWT): reconectar en seguida con ticket nuevo.
             if (/expirada/i.test(event.reason)) {
