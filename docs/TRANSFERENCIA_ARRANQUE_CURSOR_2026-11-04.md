@@ -1,5 +1,7 @@
 # Transferencia temporal: arranque y cursor
 
+> **Documento histórico.** Su estado fue reemplazado por [ACTA_ACEPTACION_V01_V06.md](ACTA_ACEPTACION_V01_V06.md) (PR #53) y por los PR #54–#58. Se conserva como evidencia; no describe el estado actual.
+
 **Autorización:** Víctor respondió expresamente en este chat «Sí, autorizo esa transferencia temporal» a la solicitud que fija tarea, rutas y condición de fin, el 4 de noviembre de 2026 (Bogotá).
 
 **Tarea:** corregir el preflight de JWT/pagos antes de conexiones/migraciones y preservar la precisión temporal del cursor de órdenes, sin cambiar la semántica de negocio ni sus contratos.

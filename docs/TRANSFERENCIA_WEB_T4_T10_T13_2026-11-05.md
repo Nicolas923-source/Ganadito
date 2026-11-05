@@ -27,3 +27,18 @@
   - `/trazabilidad/:id/publico` es la ruta del QR. Siempre consulta **sin token**, aunque haya sesión, y rechaza una vista `COMPLETA`.
   - `/trazabilidad/:id` sin sesión también muestra la vista pública.
   - La validación quedó en un único módulo, `lib/trazabilidad/pasaporte.ts`, compartido por ambas rutas sin duplicar código.
+
+## Ampliación: higiene del repositorio (2026-11-05)
+
+Nicolás pidió expresamente una revisión completa del repositorio y la corrección de las fallas, mezclas y duplicados. Bajo esa autorización, el PR de higiene toca estas rutas de Víctor:
+- `apps/web/src/lib/components/**`: se eliminan 19 componentes sin uso (unas 5.900 líneas) que fabricaban resultados de SUNAT, CAVALI, logística, mayorista, GMX y MINSA y prometían garantías. Ninguna ruta los importaba.
+- `.github/workflows/ci.yml`: se quitan las variables `DB_*`, que no lee nadie.
+- `apps/api/package.json`: el glob de pruebas va entre comillas.
+- `.gitignore`.
+- Avisos de documento histórico en los informes reemplazados de `docs/`, más correcciones en `docs/ARCHITECTURE.md`, `docs/OWNERSHIP.md`, el ADR 0001 y los README de los paquetes.
+- La plantilla de variables de entorno queda **pendiente**: el hook local de Nicolás bloquea cualquier operación que la mencione, así que la sube él. Los cambios propuestos son:
+  - el puerto de la IA pasa de 8000 a 8001;
+  - se documentan las variables que el código sí lee;
+  - se quitan las que no lee nadie.
+
+**Condición de fin:** el PR se une con la CI en verde. Las rutas vuelven a Víctor, que puede revisar después de la unión.

@@ -1,5 +1,7 @@
 # Revisión y avance conjunto - corte técnico actual
 
+> **Documento histórico.** Su estado fue reemplazado por [ACTA_ACEPTACION_V01_V06.md](ACTA_ACEPTACION_V01_V06.md) (PR #53) y por los PR #54–#58. Se conserva como evidencia; no describe el estado actual.
+
 Fuentes: main `526a22d4beeaa5d4c490481b72d536a475d73379`; base web #37 `03722fcdba4bf303b9a61c5414720ffc1add44e7`. Las fusiones de Nicolás ya estaban realizadas por otras acciones; Codex no fusionó PR ni desplegó. Esta revisión distingue código integrado, ramas de Víctor y aceptación pendiente.
 
 ## Aprobaciones reales

@@ -10,7 +10,7 @@ cd services/ai-satellite
 .venv/Scripts/python run.py   # puerto 8001
 ```
 
-La CI del monorepo **todavía no ejecuta estas pruebas**: falta un job de Python en `.github/workflows`, y ese archivo es de Víctor.
+La CI ejecuta estas pruebas en el job «Pruebas del satélite IA (Python)», obligatorio para unir a `main`.
 
 ## Estado real de cada endpoint
 
