@@ -3,6 +3,22 @@ import crypto from 'node:crypto';
 export type EstadoBovino = 'VIVO' | 'FAENADO' | 'DECESO' | 'TRANSFERIDO';
 export type SexoBovino = 'MACHO' | 'HEMBRA';
 
+/** Tipos de evento de negocio admitidos. La API rechaza cualquier otro (400). */
+export const TIPOS_EVENTO_TRAZABILIDAD = [
+  'REGISTRO_INICIAL',
+  'VACUNACION',
+  'TRATAMIENTO',
+  'PESAJE',
+  'MOVILIZACION_CSTI',
+  'PESAJE_CAMAL',
+  'INSPECCION_POST_MORTEM',
+  'CAMBIO_PROPIEDAD'
+] as const;
+
+export function esTipoEventoTrazabilidad(valor: unknown): valor is TipoEventoTrazabilidad {
+  return typeof valor === 'string' && (TIPOS_EVENTO_TRAZABILIDAD as readonly string[]).includes(valor);
+}
+
 export type TipoEventoTrazabilidad =
   | 'REGISTRO_INICIAL'
   | 'VACUNACION'
@@ -79,6 +95,25 @@ export interface PasaporteDigitalResponse {
   bovino: Bovino;
   eventos: EventoTrazabilidad[];
 }
+
+/** Bovino en la vista pública (QR): no revela la organización dueña. */
+export interface BovinoPublico extends Omit<Bovino, 'organizacion_id'> {
+  organizacion_id: null;
+}
+
+/**
+ * Evento en la vista pública: sin autor y con metadata proyectada por lista blanca
+ * (las claves no públicas valen "[REDACTADO]"). Los hashes se conservan; la integridad
+ * se verifica con GET /verificar, nunca recalculando en el cliente.
+ */
+export interface EventoTrazabilidadPublico extends Omit<EventoTrazabilidad, 'autor_id'> {
+  autor_id: null;
+}
+
+/** Respuesta de GET /trazabilidad/bovinos/:id/pasaporte, discriminada por `vista`. */
+export type PasaporteDigitalVista =
+  | (PasaporteDigitalResponse & { vista: 'COMPLETA' })
+  | { vista: 'PUBLICA'; bovino: BovinoPublico; eventos: EventoTrazabilidadPublico[] };
 
 export interface VerificacionCadenaResponse {
   integro: boolean;

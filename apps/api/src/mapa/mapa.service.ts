@@ -3,6 +3,7 @@ import { REJILLA_UBICACION_GRADOS, sqlUbicacionAproximada } from './ubicacion-pu
 import type {
   CrearEstablecimientoInput,
   EstablecimientoResponse,
+  EstablecimientoCercanoResponse,
   BusquedaCercanosQuery
 } from './mapa.types.js';
 
@@ -96,7 +97,7 @@ export class MapaService {
     centro: { latitud: number; longitud: number };
     radio_km: number;
     total: number;
-    establecimientos: EstablecimientoResponse[];
+    establecimientos: EstablecimientoCercanoResponse[];
   }> {
     const { lat, lon, radio_km = 50, tipo, limit = 20, offset = 0 } = query;
 
@@ -119,7 +120,7 @@ export class MapaService {
     // tanto en la respuesta como en el filtro y la distancia, para que no pueda
     // reconstruirse por trilateración. La dirección textual también se oculta.
     // El prefiltro sobre `coordenadas` (radio + 2 km) mantiene el uso del índice GiST.
-    const res = await this.pool.query<EstablecimientoResponse & { ubicacion_aproximada: boolean }>(
+    const res = await this.pool.query<EstablecimientoCercanoResponse>(
       `WITH candidatos AS (
          SELECT e.*,
                 ${sqlUbicacionAproximada('e', '$7')} AS aprox

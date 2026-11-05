@@ -3,6 +3,7 @@ import { sqlPosicionPublica, sqlUbicacionAproximada } from '../mapa/ubicacion-pu
 import type {
   CrearCotizacionSpotInput,
   CotizacionSpotResponse,
+  CotizacionPizarraResponse,
   ConsultaPizarraQuery
 } from './spot.types.js';
 
@@ -140,7 +141,7 @@ export class SpotService {
    */
   async consultarPizarra(query: ConsultaPizarraQuery, viewerOrgId?: string): Promise<{
     total: number;
-    cotizaciones: CotizacionSpotResponse[];
+    cotizaciones: CotizacionPizarraResponse[];
   }> {
     const { producto, ubigeo, categoria, calidad, limit = 50, offset = 0 } = query;
 
@@ -209,7 +210,7 @@ export class SpotService {
       LIMIT ${limitPlaceholder} OFFSET ${offsetPlaceholder}
     `;
 
-    const res = await this.pool.query<CotizacionSpotResponse>(sql, values);
+    const res = await this.pool.query<CotizacionPizarraResponse>(sql, values);
 
     return {
       total: res.rows.length,
