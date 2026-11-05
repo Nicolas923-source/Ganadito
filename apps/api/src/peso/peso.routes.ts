@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync, FastifyReply } from 'fastify';
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import type pg from 'pg';
 import { createAuthMiddleware } from '../auth/auth.middleware.js';
 import { requireRole } from '../auth/authorize.js';
@@ -41,6 +41,10 @@ export const pesoRoutes: FastifyPluginAsync<PesoRoutesOptions> = async (fastify,
   const aiClient = options.aiClient ?? new AiClientService({ baseUrl: options.aiServiceUrl });
   const servicio = new PesoService(pool, aiClient);
   const authenticate = createAuthMiddleware(pool);
+  // Lectura pública: si llega un token se valida (el dueño ve sus borradores).
+  const authenticateOpcional = async (request: FastifyRequest, reply: FastifyReply) => {
+    if (request.headers.authorization) return authenticate(request, reply);
+  };
 
   /**
    * POST /api/v1/subastas/:id/estimaciones-peso
@@ -49,7 +53,8 @@ export const pesoRoutes: FastifyPluginAsync<PesoRoutesOptions> = async (fastify,
    */
   fastify.post<{ Params: { id: string }; Body: unknown }>(
     '/subastas/:id/estimaciones-peso',
-    { bodyLimit: LIMITE_CUERPO_ESTIMACION_BYTES, preHandler: [authenticate, requireRole('VENDEDOR')] },
+    // onRequest (no preHandler): sesión y rol se validan ANTES de leer y parsear hasta 26 MB.
+    { bodyLimit: LIMITE_CUERPO_ESTIMACION_BYTES, onRequest: [authenticate, requireRole('VENDEDOR')] },
     async (request, reply) => {
       if (!exigirUuid(request.params.id, reply)) return reply;
       const clave = request.headers['idempotency-key'];
@@ -73,14 +78,20 @@ export const pesoRoutes: FastifyPluginAsync<PesoRoutesOptions> = async (fastify,
    * GET /api/v1/subastas/:id/estimaciones-peso
    * Lectura pública (igual que el snapshot del lote): estimaciones y resumen del lote.
    */
-  fastify.get<{ Params: { id: string } }>('/subastas/:id/estimaciones-peso', async (request, reply) => {
+  fastify.get<{ Params: { id: string } }>(
+    '/subastas/:id/estimaciones-peso',
+    { onRequest: [authenticateOpcional] },
+    async (request, reply) => {
     if (!exigirUuid(request.params.id, reply)) return reply;
     try {
-      return reply.status(200).send(await servicio.resumenLote(request.params.id));
+      return reply
+        .status(200)
+        .send(await servicio.resumenLote(request.params.id, request.userSession?.activeOrganizationId));
     } catch (err) {
       return responderError(reply, err, request.log);
     }
-  });
+  }
+  );
 
   /**
    * POST /api/v1/estimaciones-peso/:id/pesaje
@@ -89,7 +100,7 @@ export const pesoRoutes: FastifyPluginAsync<PesoRoutesOptions> = async (fastify,
    */
   fastify.post<{ Params: { id: string }; Body: unknown }>(
     '/estimaciones-peso/:id/pesaje',
-    { preHandler: [authenticate, requireRole('ADMIN', 'OPERADOR', 'AUDITOR')] },
+    { onRequest: [authenticate, requireRole('ADMIN', 'OPERADOR', 'AUDITOR')] },
     async (request, reply) => {
       if (!exigirUuid(request.params.id, reply)) return reply;
       try {
@@ -112,7 +123,7 @@ export const pesoRoutes: FastifyPluginAsync<PesoRoutesOptions> = async (fastify,
    */
   fastify.get(
     '/estimaciones-peso/evaluacion',
-    { preHandler: [authenticate, requireRole('ADMIN', 'AUDITOR')] },
+    { onRequest: [authenticate, requireRole('ADMIN', 'AUDITOR')] },
     async (request, reply) => {
       try {
         return reply.status(200).send(await servicio.evaluar());

@@ -288,6 +288,72 @@ describe('Estimaciones de peso por lote y pesajes de balanza', { concurrency: 1 
     assert.equal(resumen.estimaciones[0].tiene_pesaje, true);
   });
 
+  test('9b. Un OPERADOR de la propia organización vendedora no registra el pesaje (conflicto de interés)', async () => {
+    modo = 'ok';
+    const lote = await crearLote(vendedor.token);
+    const est = (await estimar(lote, vendedor.token, { vistas: [VISTA] })).json();
+    // El vendedor suma el rol OPERADOR en SU organización y conmuta a ese contexto.
+    const yo = await app.inject({ method: 'GET', url: '/api/v1/auth/me', headers: { authorization: `Bearer ${vendedor.token}` } });
+    const userId = yo.json().user?.id ?? yo.json().id;
+    await pool.query(
+      `INSERT INTO user_organizaciones_roles (user_id, organizacion_id, rol, is_active_context) VALUES ($1, $2, 'OPERADOR', FALSE)`,
+      [userId, vendedor.orgId]
+    );
+    const conmutar = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/organizations/switch-context',
+      headers: { authorization: `Bearer ${vendedor.token}` },
+      payload: { organizacion_id: vendedor.orgId, rol: 'OPERADOR' }
+    });
+    assert.equal(conmutar.statusCode, 200, conmutar.body);
+    const r = await app.inject({
+      method: 'POST',
+      url: `/api/v1/estimaciones-peso/${est.id}/pesaje`,
+      headers: { authorization: `Bearer ${conmutar.json().access_token}` },
+      payload: { peso_real_kg: 400, balanza_descripcion: 'Balanza propia' }
+    });
+    assert.equal(r.statusCode, 403);
+    assert.equal(r.json().code, 'CONFLICTO_DE_INTERES');
+
+    // Volver al contexto VENDEDOR para las pruebas siguientes.
+    const volver = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/organizations/switch-context',
+      headers: { authorization: `Bearer ${conmutar.json().access_token}` },
+      payload: { organizacion_id: vendedor.orgId, rol: 'VENDEDOR' }
+    });
+    assert.equal(volver.statusCode, 200, volver.body);
+    vendedor.token = volver.json().access_token;
+  });
+
+  test('9c. Sin token, un cuerpo grande se rechaza con 401 sin parsearlo; imagen > 8 MB es 413', async () => {
+    const lote = await crearLote(vendedor.token);
+    const enorme = JSON.stringify({ vistas: [{ ...VISTA, imagen_base64: 'A'.repeat(12 * 1024 * 1024) }] });
+    const sinToken = await app.inject({
+      method: 'POST', url: `/api/v1/subastas/${lote}/estimaciones-peso`,
+      headers: { 'content-type': 'application/json' }, payload: enorme
+    });
+    assert.equal(sinToken.statusCode, 401);
+    const conToken = await app.inject({
+      method: 'POST', url: `/api/v1/subastas/${lote}/estimaciones-peso`,
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${vendedor.token}` }, payload: enorme
+    });
+    assert.equal(conToken.statusCode, 413);
+    assert.equal(conToken.json().code, 'IMAGEN_DEMASIADO_GRANDE');
+  });
+
+  test('9d. Las estimaciones de un lote en BORRADOR solo las ve su organización dueña', async () => {
+    modo = 'ok';
+    const lote = await crearLote(vendedor.token, { estado: 'BORRADOR' });
+    assert.equal((await estimar(lote, vendedor.token, { vistas: [VISTA] })).statusCode, 201);
+    const url = `/api/v1/subastas/${lote}/estimaciones-peso`;
+    assert.equal((await app.inject({ method: 'GET', url })).statusCode, 404);
+    assert.equal((await app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${otroVendedor.token}` } })).statusCode, 404);
+    const duena = await app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${vendedor.token}` } });
+    assert.equal(duena.statusCode, 200);
+    assert.equal(duena.json().numero_estimaciones, 1);
+  });
+
   test('10. Evaluación: solo ADMIN/AUDITOR y reenvía los pares con medidas y cinta', async () => {
     modo = 'ok';
     const prohibido = await app.inject({ method: 'GET', url: '/api/v1/estimaciones-peso/evaluacion', headers: { authorization: `Bearer ${vendedor.token}` } });

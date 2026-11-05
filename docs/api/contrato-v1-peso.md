@@ -13,7 +13,8 @@ Agrega la estimación de **un animal** al lote.
 - **Encabezado opcional:** `Idempotency-Key` (1–128 caracteres).
   - Un reintento con el mismo cuerpo devuelve `200`, la misma estimación y `Idempotent-Replayed: true`, sin volver a llamar a la IA.
   - Si la misma clave llega con otro cuerpo, devuelve `409 IDEMPOTENCIA_CONFLICTO`.
-- **Límite del cuerpo:** 26 MB.
+- **Límites:** el cuerpo admite hasta 26 MB y cada `imagen_base64` hasta unos 11,2 MB, que equivalen a 8 MB de imagen; si se supera, responde `413 IMAGEN_DEMASIADO_GRANDE`.
+- **Orden de validación:** la sesión y el rol se validan en `onRequest`, **antes** de leer el cuerpo. Sin token, la respuesta es 401 sin parsear nada.
 
 ```json
 {
@@ -66,7 +67,7 @@ Agrega la estimación de **un animal** al lote.
 
 ## GET `/api/v1/subastas/:id/estimaciones-peso`
 
-Es pública, igual que el snapshot del lote. Devuelve un `ResumenPesoLote`:
+Es pública, igual que el snapshot del lote, con una excepción: las estimaciones de un lote en `BORRADOR` solo las ve su organización dueña (con su token); para cualquier otro, la respuesta es `404`. Devuelve un `ResumenPesoLote`:
 
 ```json
 {
@@ -86,6 +87,7 @@ Es pública, igual que el snapshot del lote. Devuelve un `ResumenPesoLote`:
 Registra el peso real de balanza de una muestra del piloto (etapa 2).
 
 - **Quién:** `ADMIN`, `OPERADOR` o `AUDITOR`. El vendedor **no** puede registrar el pesaje de su propio ganado, para no sesgar la calibración.
+- Nadie de la **organización vendedora** del lote puede registrarlo, aunque tenga rol `OPERADOR`: responde `403 CONFLICTO_DE_INTERES`.
 - Se admite un pesaje por estimación; un segundo devuelve `409 PESAJE_DUPLICADO`.
 
 ```json
@@ -96,7 +98,7 @@ Registra el peso real de balanza de una muestra del piloto (etapa 2).
 
 ## GET `/api/v1/estimaciones-peso/evaluacion`
 
-- **Quién:** `ADMIN` o `AUDITOR`.
+- **Quién:** `ADMIN` o `AUDITOR`. Se **supone** que estos roles son personal de la plataforma, porque la evaluación lee los pesajes de todas las organizaciones.
 - Toma hasta 2000 pares (estimación y balanza) y llama a `/api/v1/peso/evaluar` del satélite.
 - Devuelve `{ n_pares, evaluacion }`, con las métricas de error (MAE, MAPE, sesgo, Bland-Altman y cobertura del intervalo) y una **propuesta** de calibración con `aplicado: false`.
 - Nada se aplica solo. Una calibración aprobada se publica como una nueva `version_parametros` del satélite.

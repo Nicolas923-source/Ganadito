@@ -20,6 +20,8 @@ export const MAX_VISTAS = 4;
 const MAX_IDENTIFICADOR = 64;
 const MAX_IDEMPOTENCY_KEY = 128;
 const MAX_PARES_EVALUACION = 2000;
+/** Igual que el satélite: 8 MB de imagen equivalen a ~11,2 MB en Base64. */
+export const MAX_IMAGEN_BASE64 = Math.floor((8 * 1024 * 1024 * 4) / 3) + 4;
 
 /**
  * El lote solo admite estimaciones mientras está en BORRADOR o ACTIVO sin iniciar
@@ -114,6 +116,9 @@ export function validarEntrada(body: unknown): CrearEstimacionPesoInput {
     }
     if (v.imagen_base64 !== undefined && typeof v.imagen_base64 !== 'string') {
       throw new PesoError(`Vista ${i}: imagen_base64 debe ser texto.`, 400, 'ENTRADA_INVALIDA');
+    }
+    if (typeof v.imagen_base64 === 'string' && v.imagen_base64.length > MAX_IMAGEN_BASE64) {
+      throw new PesoError(`Vista ${i}: la imagen supera 8 MB.`, 413, 'IMAGEN_DEMASIADO_GRANDE');
     }
   });
   let identificador: string | undefined;
@@ -284,6 +289,12 @@ export class PesoService {
       return { estimacion: await this.obtener(ins.rows[0]!.id), repetida: false };
     } catch (err: any) {
       if (err?.code === '23505' && err?.constraint === 'uq_estimaciones_peso_animal') {
+        // Carrera de dos reintentos con la misma clave y el mismo animal: el perdedor
+        // choca con el índice del animal, pero debe reproducir la respuesta guardada.
+        if (idempotencyKey && huella) {
+          const previa = await this.buscarIdempotente(loteId, idempotencyKey, huella);
+          if (previa) return { estimacion: previa, repetida: true };
+        }
         throw new PesoError('Ese animal ya tiene una estimación en el lote.', 409, 'ANIMAL_DUPLICADO');
       }
       throw err;
@@ -295,9 +306,16 @@ export class PesoService {
     return aRespuesta(res.rows[0]!);
   }
 
-  async resumenLote(loteId: string): Promise<ResumenPesoLote> {
-    const existe = await this.pool.query('SELECT 1 FROM lotes_subasta WHERE id = $1', [loteId]);
-    if (existe.rows.length === 0) throw new PesoError('Lote no encontrado.', 404, 'LOTE_NO_ENCONTRADO');
+  /** Un lote en BORRADOR no está publicado: solo su organización dueña ve sus estimaciones. */
+  async resumenLote(loteId: string, organizacionVisitante?: string): Promise<ResumenPesoLote> {
+    const lote = await this.pool.query<{ estado: string; vendedor_id: string }>(
+      'SELECT estado, vendedor_id FROM lotes_subasta WHERE id = $1',
+      [loteId]
+    );
+    const fila = lote.rows[0];
+    if (!fila || (fila.estado === 'BORRADOR' && fila.vendedor_id !== organizacionVisitante)) {
+      throw new PesoError('Lote no encontrado.', 404, 'LOTE_NO_ENCONTRADO');
+    }
     const res = await this.pool.query<FilaEstimacion>(
       `SELECT ${COLUMNAS} FROM estimaciones_peso e WHERE e.lote_id = $1 ORDER BY e.created_at, e.id`,
       [loteId]
@@ -334,6 +352,16 @@ export class PesoService {
     if (!balanza || balanza.length > 200) {
       throw new PesoError('balanza_descripcion es obligatoria (máx. 200 caracteres).', 400, 'ENTRADA_INVALIDA');
     }
+    // Conflicto de interés: nadie de la organización vendedora registra la balanza de
+    // sus propios animales (sesgaría la calibración), aunque tenga rol OPERADOR.
+    const duena = await this.pool.query<{ organizacion_id: string }>(
+      'SELECT organizacion_id FROM estimaciones_peso WHERE id = $1',
+      [estimacionId]
+    );
+    if (!duena.rows[0]) throw new PesoError('Estimación no encontrada.', 404, 'ESTIMACION_NO_ENCONTRADA');
+    if (duena.rows[0].organizacion_id === organizacionId) {
+      throw new PesoError('La organización vendedora no puede registrar el pesaje de su propio lote.', 403, 'CONFLICTO_DE_INTERES');
+    }
     try {
       const res = await this.pool.query<{
         id: string; estimacion_id: string; peso_real_kg: string; perimetro_cinta_cm: string | null;
@@ -342,7 +370,8 @@ export class PesoService {
         `WITH nuevo AS (
            INSERT INTO pesajes_balanza (estimacion_id, peso_real_kg, perimetro_cinta_cm, balanza_descripcion,
                                         registrado_por_user_id, registrado_por_organizacion_id)
-           SELECT e.id, $2, $3, $4, $5, $6 FROM estimaciones_peso e WHERE e.id = $1
+           SELECT e.id, $2, $3, $4, $5, $6 FROM estimaciones_peso e
+           WHERE e.id = $1 AND e.organizacion_id <> $6
            RETURNING *)
          SELECT n.id, n.estimacion_id, n.peso_real_kg, n.perimetro_cinta_cm, n.balanza_descripcion, n.created_at,
                 e.peso_estimado_kg, e.rango_min_kg, e.rango_max_kg
