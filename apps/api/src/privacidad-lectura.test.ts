@@ -177,6 +177,9 @@ describe('N05: privacidad de ubicación en mapa y vista pública del pasaporte',
     assert.strictEqual(publico.vista, 'PUBLICA');
     const mov = publico.eventos.find((e: any) => e.event_type === 'MOVILIZACION_CSTI');
     assert.strictEqual(mov.autor_id, null);
+    // Sin hashes en la vista pública: permitirían adivinar metadata privada de baja entropía.
+    assert.ok(!('current_hash' in mov) && !('prev_hash' in mov), 'la vista pública no expone hashes');
+    assert.ok(!publico.eventos.some((e: any) => 'current_hash' in e || 'prev_hash' in e));
     assert.strictEqual(mov.metadata.gps, '[REDACTADO]');
     assert.strictEqual(mov.metadata.dni_conductor, '[REDACTADO]');
     // Lista blanca: "destino" no es público (puede ser otro fundo); el distrito sí lo sería.
@@ -189,6 +192,7 @@ describe('N05: privacidad de ubicación en mapa y vista pública del pasaporte',
     const dueno = (await app.inject({ method: 'GET', url: `/api/v1/trazabilidad/bovinos/${bovinoId}/pasaporte`, headers: auth(duenoToken) })).json();
     assert.strictEqual(dueno.vista, 'COMPLETA');
     assert.deepStrictEqual(dueno.eventos.find((e: any) => e.event_type === 'MOVILIZACION_CSTI').metadata.gps, { lat: -4.1, lon: -75.6 });
+    assert.match(dueno.eventos[0].current_hash, /^[a-f0-9]{64}$/, 'el dueño sí ve la cadena completa');
 
     const verif = (await app.inject({ method: 'GET', url: `/api/v1/trazabilidad/bovinos/${bovinoId}/verificar` })).json();
     assert.strictEqual(verif.integro, true);

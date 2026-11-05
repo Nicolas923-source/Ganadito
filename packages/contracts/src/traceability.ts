@@ -102,11 +102,13 @@ export interface BovinoPublico extends Omit<Bovino, 'organizacion_id'> {
 }
 
 /**
- * Evento en la vista pública: sin autor y con metadata proyectada por lista blanca
- * (las claves no públicas valen "[REDACTADO]"). Los hashes se conservan; la integridad
- * se verifica con GET /verificar, nunca recalculando en el cliente.
+ * Evento en la vista pública: sin autor, con metadata proyectada por lista blanca (las
+ * claves no públicas valen "[REDACTADO]") y SIN prev_hash / current_hash: un hash de
+ * metadata privada de baja entropía (DNI, placa, coordenadas) permitiría probar
+ * candidatos hasta encontrar el valor. La integridad se comprueba con GET /verificar,
+ * que recalcula la cadena completa en el servidor.
  */
-export interface EventoTrazabilidadPublico extends Omit<EventoTrazabilidad, 'autor_id'> {
+export interface EventoTrazabilidadPublico extends Omit<EventoTrazabilidad, 'autor_id' | 'prev_hash' | 'current_hash'> {
   autor_id: null;
 }
 
