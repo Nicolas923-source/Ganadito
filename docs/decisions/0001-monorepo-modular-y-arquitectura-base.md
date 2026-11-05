@@ -12,7 +12,7 @@ El proyecto Ganadito requiere una plataforma escalable, mantenible y ágil para 
 3. Utilizar **Node.js con Fastify** y TypeScript para la API transaccional (`apps/api`), garantizando alto rendimiento y baja sobrecarga.
 4. Establecer **PostgreSQL 16 con PostGIS 3.4** como la autoridad definitiva de persistencia transaccional y geoespacial.
 5. Utilizar **Redis 7** de forma auxiliar para caché, presencia y mensajería en tiempo real, sin rol transaccional autoritativo.
-6. Aislar las capacidades de Inteligencia Artificial en un servicio satélite desacoplado en Python (`services/ai`).
+6. Aislar las capacidades de Inteligencia Artificial en un servicio satélite desacoplado en Python (`services/ai`; desde 2026-11-05 vive en `services/ai-satellite`, el esqueleto original se eliminó).
 
 ## Consecuencias
 ### Positivas

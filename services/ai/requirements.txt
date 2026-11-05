@@ -1,3 +1,0 @@
-# Ganadito AI Service — Requisitos base (Python 3.11 / 3.12)
-# Nota: La implementación funcional y dependencias pesadas (PyTorch, OpenCV) se incorporarán cuando corresponda.
-# No instalar globalmente sin entorno virtual.

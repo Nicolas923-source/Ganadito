@@ -1,5 +1,7 @@
 # Tres propuestas de la foto y seguimiento
 
+> **Documento histórico.** Su estado fue reemplazado por [ACTA_ACEPTACION_V01_V06.md](ACTA_ACEPTACION_V01_V06.md) (PR #53) y por los PR #54–#58. Se conserva como evidencia; no describe el estado actual.
+
 ## Seguimiento vigente — 5 de noviembre de 2026
 
 El texto siguiente conserva las propuestas formuladas sobre la base histórica de la foto; sus descripciones de código no describen automáticamente main `5b73e470`.
