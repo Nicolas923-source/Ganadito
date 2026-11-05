@@ -38,13 +38,16 @@ MAX_PARES = 2000  # 5000 pares tardaban ~2,2 s; 2000 basta para el piloto
 class ParEvaluacion(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    peso_real_kg: float = Field(gt=0, le=2000, description="Peso de balanza")
-    peso_estimado_kg: float | None = Field(default=None, gt=0, le=2000)
-    rango_min_kg: float | None = Field(default=None, gt=0)
-    rango_max_kg: float | None = Field(default=None, gt=0)
-    largo_corporal_cm: float | None = Field(default=None, gt=0, le=400)
-    profundidad_pecho_cm: float | None = Field(default=None, gt=0, le=200)
-    perimetro_cinta_cm: float | None = Field(default=None, gt=0, le=400)
+    # Límites físicos plausibles (bovinos, de ternero a toro adulto). Además de rechazar
+    # datos imposibles, evitan desbordes numéricos: con perímetros de 1e-150 cm, exp(a)
+    # desbordaba (500) y con pesos de 1e-306 kg las métricas salían inf/NaN.
+    peso_real_kg: float = Field(ge=10, le=2000, description="Peso de balanza")
+    peso_estimado_kg: float | None = Field(default=None, ge=10, le=2000)
+    rango_min_kg: float | None = Field(default=None, ge=1, le=5000)
+    rango_max_kg: float | None = Field(default=None, ge=1, le=5000)
+    largo_corporal_cm: float | None = Field(default=None, ge=30, le=400)
+    profundidad_pecho_cm: float | None = Field(default=None, ge=10, le=200)
+    perimetro_cinta_cm: float | None = Field(default=None, ge=30, le=400)
 
 
 class EvaluacionPesoInput(BaseModel):
@@ -231,9 +234,12 @@ def calibrar_formula(pares: list[ParEvaluacion]) -> CalibracionFormula | None:
     s = np.array([float(z.peso_schaeffer_kg(p.perimetro_cinta_cm, p.largo_corporal_cm)) for p in candidatos])
     x = np.log(s)
     y = np.log([p.peso_real_kg for p in candidatos])
-    escala = ajustar_solo_escala(x, y)
-    libre = ajustar_libre(x, y) if np.var(x) > 1e-10 else None
-    if not (math.isfinite(escala.factor_escala) and escala.factor_escala > 0 and math.isfinite(escala.mape_loocv)):
+    try:
+        escala = ajustar_solo_escala(x, y)
+        libre = ajustar_libre(x, y) if np.var(x) > 1e-10 else None
+    except OverflowError:
+        return None
+    if not all(math.isfinite(v) for v in (escala.factor_escala, escala.mape_loocv, escala.sigma_log)) or escala.factor_escala <= 0:
         return None
     # Con pocos datos el modelo libre sobreajusta: solo se recomienda si mejora el LOOCV
     # y hay muestra suficiente.
@@ -259,7 +265,10 @@ def evaluar(payload: EvaluacionPesoInput) -> EvaluacionPesoResult:
     advertencias: list[str] = []
     if metricas is None:
         advertencias.append(f"Se necesitan al menos {MIN_PARES_METRICAS} pares con peso estimado para medir el error.")
-    if relacion is None or formula is None:
+    completos = sum(p.largo_corporal_cm is not None and p.perimetro_cinta_cm is not None for p in payload.pares)
+    if formula is None and completos >= MIN_PARES_AJUSTE:
+        advertencias.append("No se pudo proponer una calibración de la fórmula: el ajuste no dio un resultado numérico válido.")
+    elif relacion is None or formula is None:
         advertencias.append(f"Se necesitan al menos {MIN_PARES_AJUSTE} pares completos para proponer una calibración.")
     if len(payload.pares) < PARES_RECOMENDADOS:
         advertencias.append(f"Con menos de {PARES_RECOMENDADOS} pesajes las métricas son poco estables.")

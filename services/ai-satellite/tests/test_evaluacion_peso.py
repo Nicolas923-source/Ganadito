@@ -113,18 +113,21 @@ def test_todos_los_s_iguales_no_rompe_el_ajuste_libre():
 
 
 def test_factor_de_escala_muy_pequeno_no_se_redondea_a_cero():
-    """Hallazgo #40: round(2.665556e-8, 5) devolvía 0.0 como propuesta."""
+    """Hallazgo #40: round(2.665556e-8, 5) devolvía 0.0. Se prueba la función de ajuste
+    directamente: por la API, pesos así de pequeños ya se rechazan por implausibles."""
     factor = 2.665556e-8
-    pares = []
-    for i in range(12):
-        largo, perimetro = 120 + 3 * i, 160 + 2 * i
-        s = float(z.peso_schaeffer_kg(perimetro, largo))
-        pares.append({"peso_real_kg": s * factor, "largo_corporal_cm": largo, "perimetro_cinta_cm": perimetro})
-    d = client.post(URL, json={"pares": pares}).json()
-    propuesto = d["propuesta"]["factor_escala_modelo"]
-    assert propuesto is not None and propuesto > 0
-    assert propuesto == pytest.approx(factor, rel=1e-5)
-    assert d["calibracion_formula"]["solo_escala"]["factor_escala"] == pytest.approx(factor, rel=1e-5)
+    x = np.log(np.linspace(300, 600, 12))
+    y = x + np.log(factor)
+    ajuste = ev.ajustar_solo_escala(x, y)
+    assert ajuste.factor_escala > 0
+    assert ajuste.factor_escala == pytest.approx(factor, rel=1e-6)
+
+
+def test_pares_fisicamente_imposibles_se_rechazan_sin_500():
+    """Revisión de #49: perímetros de 1e-150 cm desbordaban exp(a) y daban 500."""
+    absurdo = {"peso_real_kg": 400, "largo_corporal_cm": 1e-5, "perimetro_cinta_cm": 1e-150}
+    assert client.post(URL, json={"pares": [absurdo] * 12}).status_code == 422
+    assert client.post(URL, json={"pares": [{"peso_real_kg": 1e-306, "peso_estimado_kg": 400}] * 3}).status_code == 422
 
 
 def test_loocv_con_apalancamiento_uno_no_publica_infinito():
