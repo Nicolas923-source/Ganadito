@@ -68,6 +68,7 @@ jobs:
           --health-retries 5
 
     env:
+      GANADITO_ALLOW_CURSOR_DB_TEST: isolated-ci-fixtures
       DATABASE_URL: postgres://postgres:postgrespassword@localhost:5432/ganadito
       DATABASE_HOST: localhost
       DATABASE_PORT: 5432
