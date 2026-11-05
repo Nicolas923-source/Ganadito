@@ -4,8 +4,12 @@ import {
   type EventoTrazabilidad,
   type RegistrarBovinoInput,
   type AgregarEventoInput,
-  type PasaporteDigitalResponse,
+  type PasaporteDigitalVista,
+  type BovinoPublico,
+  type EventoTrazabilidadPublico,
   type VerificacionCadenaResponse,
+  esTipoEventoTrazabilidad,
+  TIPOS_EVENTO_TRAZABILIDAD,
   GENESIS_PREV_HASH,
   calcularHashEvento
 } from '@ganadito/contracts';
@@ -17,7 +21,8 @@ export function redactarMetadata(valor: unknown): Record<string, unknown> {
   const redactar = (v: unknown): unknown => {
     if (Array.isArray(v)) return v.map(redactar);
     if (v && typeof v === 'object') {
-      const out: Record<string, unknown> = {};
+      // Sin prototipo: una clave "__proto__" queda como propiedad propia, no altera el objeto.
+      const out: Record<string, unknown> = Object.create(null);
       for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
         out[k] = CLAVE_SENSIBLE.test(k) ? '[REDACTADO]' : redactar(val);
       }
@@ -34,20 +39,24 @@ export function redactarMetadata(valor: unknown): Record<string, unknown> {
  * su nombre no coincidiera con la lista negra, p. ej. "origen" o "fundo_nacimiento").
  * Solo se publican valores primitivos; objetos y arreglos se redactan.
  */
-export const METADATA_PUBLICA: Readonly<Record<string, ReadonlySet<string>>> = {
-  REGISTRO_INICIAL: new Set(['raza', 'sexo', 'fecha_nacimiento', 'peso_nacimiento_kg', 'tipo_parto']),
-  VACUNACION: new Set(['vacuna', 'dosis_ml', 'lote', 'campana_oficial', 'fecha']),
-  TRATAMIENTO: new Set(['producto', 'dosis_ml', 'dias_retiro', 'fecha_fin_retiro', 'fecha']),
-  PESAJE: new Set(['peso_vivo_kg', 'fecha']),
-  MOVILIZACION_CSTI: new Set(['csti_numero', 'guia_senasa', 'guia_transito_senasa', 'origen_distrito', 'destino_distrito', 'fecha']),
-  PESAJE_CAMAL: new Set(['camal_nombre', 'camal_codigo_oficial', 'peso_vivo_kg', 'peso_canal_caliente_kg', 'rendimiento_canal_pct']),
-  INSPECCION_POST_MORTEM: new Set(['camal_codigo_oficial', 'dictamen_post_mortem', 'resultado']),
-  CAMBIO_PROPIEDAD: new Set(['fecha'])
-};
+// Map (no objeto literal): METADATA_PUBLICA.get('constructor') es undefined, mientras que
+// un objeto devolvería Object.prototype.constructor y .has() lanzaría TypeError (500).
+export const METADATA_PUBLICA: ReadonlyMap<string, ReadonlySet<string>> = new Map<string, ReadonlySet<string>>([
+  ['REGISTRO_INICIAL', new Set(['raza', 'sexo', 'fecha_nacimiento', 'peso_nacimiento_kg', 'tipo_parto'])],
+  ['VACUNACION', new Set(['vacuna', 'dosis_ml', 'lote', 'campana_oficial', 'fecha'])],
+  ['TRATAMIENTO', new Set(['producto', 'dosis_ml', 'dias_retiro', 'fecha_fin_retiro', 'fecha'])],
+  ['PESAJE', new Set(['peso_vivo_kg', 'fecha'])],
+  ['MOVILIZACION_CSTI', new Set(['csti_numero', 'guia_senasa', 'guia_transito_senasa', 'origen_distrito', 'destino_distrito', 'fecha'])],
+  ['PESAJE_CAMAL', new Set(['camal_nombre', 'camal_codigo_oficial', 'peso_vivo_kg', 'peso_canal_caliente_kg', 'rendimiento_canal_pct'])],
+  ['INSPECCION_POST_MORTEM', new Set(['camal_codigo_oficial', 'dictamen_post_mortem', 'resultado'])],
+  ['CAMBIO_PROPIEDAD', new Set(['fecha'])]
+]);
+
+const SIN_CLAVES_PUBLICAS: ReadonlySet<string> = new Set();
 
 export function proyectarMetadataPublica(eventType: string, metadata: unknown): Record<string, unknown> {
-  const permitidas = METADATA_PUBLICA[eventType] ?? new Set<string>();
-  const out: Record<string, unknown> = {};
+  const permitidas = METADATA_PUBLICA.get(eventType) ?? SIN_CLAVES_PUBLICAS;
+  const out: Record<string, unknown> = Object.create(null);
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return out;
   for (const [k, v] of Object.entries(metadata as Record<string, unknown>)) {
     const primitivo = v === null || ['string', 'number', 'boolean'].includes(typeof v);
@@ -184,6 +193,12 @@ export class TrazabilidadService {
     if (!input.event_type) {
       throw new TrazabilidadError('El campo event_type es obligatorio.', 400);
     }
+    if (!esTipoEventoTrazabilidad(input.event_type)) {
+      throw new TrazabilidadError(
+        `event_type inválido. Valores admitidos: ${TIPOS_EVENTO_TRAZABILIDAD.join(', ')}.`,
+        400
+      );
+    }
     const metadata = input.metadata ?? {};
 
     const client = await this.pool.connect();
@@ -304,7 +319,7 @@ export class TrazabilidadService {
   /**
    * Consulta el pasaporte digital completo: datos del bovino y eventos ordenados por secuencia.
    */
-  async obtenerPasaporte(bovinoId: string, viewerOrgId?: string): Promise<PasaporteDigitalResponse & { vista: 'COMPLETA' | 'PUBLICA' }> {
+  async obtenerPasaporte(bovinoId: string, viewerOrgId?: string): Promise<PasaporteDigitalVista> {
     const bovinoRes = await this.pool.query<Bovino>(
       `SELECT * FROM bovinos WHERE id = $1`,
       [bovinoId]
@@ -328,10 +343,10 @@ export class TrazabilidadService {
       return { bovino, eventos: eventosRes.rows, vista: 'COMPLETA' };
     }
     // Proyección explícita: la vista pública no revela qué organización es dueña del animal.
-    const bovinoPublico: Bovino = {
+    const bovinoPublico: BovinoPublico = {
       id: bovino.id,
       codigo_arete: bovino.codigo_arete,
-      organizacion_id: null as unknown as string,
+      organizacion_id: null,
       raza: bovino.raza,
       sexo: bovino.sexo,
       fecha_nacimiento: bovino.fecha_nacimiento,
@@ -341,7 +356,7 @@ export class TrazabilidadService {
     };
     return {
       bovino: bovinoPublico,
-      eventos: eventosRes.rows.map((e) => ({
+      eventos: eventosRes.rows.map((e): EventoTrazabilidadPublico => ({
         id: e.id,
         bovino_id: e.bovino_id,
         secuencia: e.secuencia,
@@ -349,9 +364,9 @@ export class TrazabilidadService {
         metadata: proyectarMetadataPublica(e.event_type, e.metadata),
         prev_hash: e.prev_hash,
         current_hash: e.current_hash,
-        autor_id: null as unknown as string,
+        autor_id: null,
         created_at: e.created_at
-      })) as EventoTrazabilidad[],
+      })),
       vista: 'PUBLICA'
     };
   }
