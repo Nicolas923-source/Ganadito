@@ -41,7 +41,7 @@ Ruta pública, usada por el QR. El token es opcional.
     `origen`, `destino` y `fundo_*` **no** son públicos, porque pueden identificar el fundo. Hay que usar `origen_distrito` y `destino_distrito`.
 - **Tipos compartidos** (`@ganadito/contracts`):
   - `PasaporteDigitalVista` es una unión discriminada por `vista`. En `'PUBLICA'` usa `BovinoPublico`, con `organizacion_id: null`, y `EventoTrazabilidadPublico`, con `autor_id: null`.
-  - Las posiciones públicas de mapa y Spot implementan `UbicacionPublica` (`latitud`, `longitud`, `ubicacion_aproximada`).
+  - `/establecimientos/cercanos` implementa `UbicacionPublica` (`latitud`, `longitud`, `ubicacion_aproximada`). La pizarra Spot (`CotizacionPizarraResponse`) sigue la misma política, pero `latitud` y `longitud` pueden ser `null` cuando la cotización no tiene establecimiento.
 - `POST /trazabilidad/bovinos/:id/eventos` acepta solo `TIPOS_EVENTO_TRAZABILIDAD`. Cualquier otro valor, incluidos `constructor`, `toString` o `__proto__`, responde `400`.
 - Los hashes no cambian. La integridad se comprueba con `GET /trazabilidad/bovinos/:id/verificar`, que recalcula en el servidor. La web **no** debe recalcular hashes con la metadata redactada.
 
