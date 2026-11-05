@@ -214,6 +214,8 @@ def ajustar_libre(x: np.ndarray, y: np.ndarray) -> AjusteFormula | None:
     pendiente sin identificar y el residuo LOOCV sea infinito.
     """
     n = len(y)
+    if n < 3:
+        return None
     # Forma CENTRADA (estable): la inversión de X'X sin centrar perdía precisión y
     # aceptaba folds sin variación de S.
     xm = float(np.mean(x))

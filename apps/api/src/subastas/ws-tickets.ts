@@ -162,7 +162,8 @@ export function supervisarSesionWs(
       const vigente = await Promise.race([
         membresiaVigente(pool, sesion),
         new Promise<never>((_, rechazar) => {
-          plazo = setTimeout(() => rechazar(new Error('PLAZO_REVALIDACION')), revalidacionMs);
+          // Plazo propio, el doble del intervalo: una BD lenta pero sana no suma fallos espurios.
+          plazo = setTimeout(() => rechazar(new Error('PLAZO_REVALIDACION')), 2 * revalidacionMs);
           plazo.unref?.();
         })
       ]);
