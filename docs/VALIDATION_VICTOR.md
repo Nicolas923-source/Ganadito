@@ -2,6 +2,12 @@
 
 Base: `Nicolas923-source/Ganadito`, commit `dde293bc977ac090d631b6c90a2cb4bb6efcb40e`. Validación inicial del 3 de noviembre de 2026 y repetición completa el 4 de noviembre de 2026 (America/Bogota).
 
+## Corte vigente — 5 de noviembre de 2026
+
+[#51](https://github.com/Nicolas923-source/Ganadito/pull/51), código `cce1957` sobre main `5b73e470`, [CI 42029557812](https://github.com/Nicolas923-source/Ganadito/actions/runs/42029557812): cuatro jobs correctos. 208 API, 5 web, 39 configuración, 2 proxy, 85 fixtures más 2 HTTP, 49 Python, 2 recorridos reales. Web adapter-node compilada con SHA verificado, mismo lote UI→puja→worker→orden, recarga/aislamiento y privacidad mapa/Spot/pasaporte. Ninguna prueba real usó Neon ni PostgreSQL local existente. Una revisión independiente detectó y confirmó corregido el rechazo de eventos históricos y el lookup heredado en su visualización; no sustituye la revisión de Nicolás.
+
+Los [24 hitos](HITOS_VICTOR_2026-11-05.md) tienen ahora 18 criterios con evidencia técnica y seis aceptaciones pendientes. Allí figuran los hallazgos nuevos de Nicolás #47/#48/#49/#50 y el tipo nullable #46 corregido bajo transferencia V05. No se repiten defectos ya resueltos ni se declara ausencia universal de fallos. Staging/producción, aceptación WS y pagos reales siguen separados; web WS y ruta pública web permanecen apagados. Los apartados siguientes son registros históricos. El PR enlaza la CI del HEAD final tras el commit documental.
+
 ## Ejecución programada: mismo lote publicado desde la web
 
 La prueba real se amplió tras leer la foto y el PDF originales: el lote creado por el formulario web es ahora exactamente el mismo que se puja, cierra mediante worker y consulta como orden. Se retiró la segunda publicación API usada por la prueba histórica. Se añadió recuperación de sesión/snapshot tras recarga y rechazo opaco del detalle de la orden al ingresar desde la web con otra organización.

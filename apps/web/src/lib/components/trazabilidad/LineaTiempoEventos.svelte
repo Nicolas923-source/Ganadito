@@ -1,8 +1,11 @@
 <script lang="ts">
   import type { EventoTrazabilidad, TipoEventoTrazabilidad } from '@ganadito/contracts';
 
+  // Historic names are read literally; the business enum still governs writes.
+  export type EventoLectura = Omit<EventoTrazabilidad, 'event_type'> & { readonly event_type: string };
+
   interface Props {
-    eventos: EventoTrazabilidad[];
+    eventos: readonly EventoLectura[];
   }
 
   let { eventos }: Props = $props();
@@ -21,10 +24,8 @@
     }
   }
 
-  const CONFIG_EVENTOS: Record<
-    TipoEventoTrazabilidad,
-    { titulo: string; icono: string; badgeClases: string; nodoColor: string }
-  > = {
+  interface ConfigEvento { titulo: string; icono: string; badgeClases: string; nodoColor: string }
+  const CONFIG_EVENTOS: Readonly<Record<string, ConfigEvento>> = {
     REGISTRO_INICIAL: {
       titulo: 'Registro Génesis del Bovino',
       icono: '🌱',
@@ -73,7 +74,7 @@
       badgeClases: 'bg-blue-500/10 text-blue-400 border-blue-500/30',
       nodoColor: 'bg-blue-500 ring-blue-500/30'
     }
-  };
+  } satisfies Record<TipoEventoTrazabilidad, ConfigEvento>;
 
   function formatoFecha(fecha: string | Date): string {
     const d = new Date(fecha);
@@ -109,7 +110,7 @@
     <!-- Línea de tiempo vertical -->
     <div class="relative pl-6 sm:pl-8 space-y-8 before:absolute before:left-2.5 sm:before:left-3.5 before:top-3 before:bottom-3 before:w-0.5 before:bg-slate-800">
       {#each eventos as evento (evento.secuencia)}
-        {@const config = CONFIG_EVENTOS[evento.event_type] || {
+        {@const config = (Object.hasOwn(CONFIG_EVENTOS, evento.event_type) ? CONFIG_EVENTOS[evento.event_type] : undefined) ?? {
           titulo: evento.event_type,
           icono: '📌',
           badgeClases: 'bg-slate-800 text-slate-300 border-slate-700',

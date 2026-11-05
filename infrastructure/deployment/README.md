@@ -1,6 +1,6 @@
 # Preparación de staging y recuperación
 
-Este directorio prepara V06. No activa producción, no provisiona servicios ni ejecuta migraciones en una base compartida. El despliegue integrado está condicionado al arranque N01, contratos revisados, lectura autorizada de órdenes y revisión final de Nicolás. Ver [solicitudes de integración](../../docs/CONTRACT_REVIEW.md).
+Este directorio prepara V06. No activa producción, no provisiona servicios ni ejecuta migraciones en una base compartida. Un despliegue requiere un host autorizado, contratos revisados y la revisión del código final conforme a [OWNERSHIP.md](../../docs/OWNERSHIP.md). Nicolás conserva la decisión final y Claude revisa cada PR por su encargo. Ver [solicitudes de integración](../../docs/CONTRACT_REVIEW.md).
 
 ## Configuración por entorno
 
@@ -9,7 +9,7 @@ Este directorio prepara V06. No activa producción, no provisiona servicios ni e
 | `PUBLIC_API_URL` | Vacío: REST al mismo origen y proxy Svelte. | Vacío para proxy del servidor; si se define un origen público, debe estar autorizado y soportar las peticiones de sesión. Nunca contiene secretos. |
 | `API_INTERNAL_URL` | `http://127.0.0.1:4000`, solo servidor. | Origen privado/autorizado de la API; configurar en el host del servidor web. No exponer credenciales en variables `PUBLIC_*`. |
 | `PUBLIC_WS_URL` | Opcional: origen `ws://` o `wss://`; sin él se usa el origen web. El proxy Vite de desarrollo reenvía WS a `API_INTERNAL_URL`. | Origen `wss://` autorizado o reverse proxy que admita Upgrade de `/api/v1/subastas/:id/live`. El proxy REST de Svelte no sustituye el proxy WS. |
-| `PUBLIC_LIVE_AUCTIONS_ENABLED` | `false`: snapshots HTTP y pujas REST. | Conservar `false` hasta corregir la exposición del JWT en logs y revisar revocación del canal con Nicolás. |
+| `PUBLIC_LIVE_AUCTIONS_ENABLED` | `false`: snapshots HTTP y pujas REST. | Conservar `false` hasta integrar y aceptar el consumidor web del contrato de tickets, membresía vigente y revocación. Bearer es la alternativa del contrato para clientes que pueden enviar cabeceras de Upgrade. |
 | `DATABASE_URL` o `DATABASE_*` | Solo API/servicios locales con datos ficticios. | Secretos del host de API, base de staging aislada confirmada por Nicolás. No reutilizar por coincidencia un proyecto Neon existente. |
 | `REDIS_URL` o `REDIS_*` | Solo API/workers locales. | Redis de staging; PostgreSQL conserva la autoridad de estado. |
 | `JWT_SECRET` | Valor ficticio de desarrollo. | Secreto propio del entorno administrado fuera de Git; N01 debe rechazar configuración insegura. |
@@ -28,7 +28,7 @@ Mantener `PAYMENTS_ENABLED=false` y dejar `WEBHOOK_SECRET` y `PAYMENTS_CHECKOUT_
 
 ## Preparar una versión
 
-1. Integrar contratos y dependencias en el orden de [VICTOR_DELIVERY.md](../../docs/VICTOR_DELIVERY.md). Actualizar la rama y obtener revisión cruzada del código final.
+1. Integrar contratos y dependencias en el orden de [VICTOR_DELIVERY.md](../../docs/VICTOR_DELIVERY.md). Actualizar la rama y obtener la revisión delegada del código final; Nicolás decide su aceptación.
 2. Ejecutar en instalación limpia:
 
    ```bash
@@ -73,20 +73,24 @@ Mantener `PAYMENTS_ENABLED=false` y dejar `WEBHOOK_SECRET` y `PAYMENTS_CHECKOUT_
 5. Confirmar host, entorno, base ficticia aislada, origen REST y ruta WS. Usar el arranque N01 anterior y coordinar con Nicolás migraciones y workers. Registrar la API como operativa únicamente después de verificar el recorrido real del SHA revisado.
 6. El responsable de staging despliega únicamente el artefacto revisado en el entorno autorizado. Este runbook no autoriza producción ni crea un despliegue automático en CI.
 
-## Recorrido real de aceptación
+## Recorrido real sobre web compilada
 
-La integración añade el job `browser-real`: web 4180, API 4181, PostGIS 16-3.4 y Redis 7 efímeros, cuentas ficticias, pagos y WS apagados. `npm run test:e2e:real` exige las guardias documentadas en [DEVELOPMENT.md](../../docs/DEVELOPMENT.md); no usar una base existente para ejecutarlo. Su resultado acredita únicamente el recorrido de ese SHA en CI y no constituye despliegue ni aceptación de staging. Mantener `PUBLIC_LIVE_AUCTIONS_ENABLED=false` hasta corregir el registro de tokens de N04.
+El job `browser-real` usa web 4180, API 4181, PostGIS 16-3.4 y Redis 7 recién creados por CI. Usa cuentas ficticias, pagos apagados y transporte WS web apagado. `npm run test:e2e:real` exige las guardias de [DEVELOPMENT.md](../../docs/DEVELOPMENT.md) y un `GANADITO_RELEASE_SHA` de 40 caracteres que CI inyecta desde `github.sha`. Nunca ejecutarlo contra PostgreSQL local existente, una base compartida o Neon; el nombre de una base por sí solo no acredita que sea efímera.
 
-Usar datos ficticios acordados con Nicolás y dos organizaciones. Adjuntar evidencia de navegador y API con fecha, SHA e IDs ficticios. No guardar contraseñas ni JWT en capturas/reportes compartidos.
+`tests/e2e/real/web.mjs` aplica las guardias antes de importar Vite. Construye adapter-node con las mismas dependencias de la web, sin evaluar el archivo Vite que carga `.env`: tanto Vite como SvelteKit usan un directorio temporal vacío para las variables. El proceso web recibe solo la configuración permitida y el upstream `http://127.0.0.1:4181`, sin credenciales API/DB. El launcher verifica el SHA generado en `build/client/_app/version.json`, registra únicamente `release_sha` en `test-results/real/release.json` y ejecuta `build/index.js`. La prueba compara ese registro con `/_app/version.json` servido. La API usa su launcher aislado con `logger: false`; capturas, vídeos y trazas permanecen desactivados y el job no sube artefactos de autenticación.
 
-- Acceder como comprador/vendedor y seleccionar un contexto devuelto por API; probar 401, 403 y expiración. Si `me` y JWT divergen tras un cambio externo de contexto, mostrar el estado de sesión y solicitar nuevo acceso.
-- Publicar un lote válido y consultar su ID oficial. Hasta integrar un contrato GET de listado, usar consulta por ID y no afirmar que existe catálogo completo.
-- Enviar puja, probar reintento conservando clave para la misma solicitud y conflicto de clave con solicitud distinta. Nicolás prueba concurrencia y persistencia; la web refleja el resultado del servidor.
-- Interrumpir WS y restablecerlo; obtener snapshot de nuevo antes de reanudar pujas. Confirmar precio, versión y cierre oficiales; no adjudicar por el reloj del navegador.
-- Nicolás ejecuta el cierre con el mecanismo y permisos acordados. Consultar la orden por el contrato de lectura aprobado y verificar vínculo al lote y `PENDIENTE_PAGO`. La web no debe fabricar una orden cuando la ruta de lectura no exista.
-- Consultar mapa, Spot y pasaporte: resultados válidos, ausencia y error; organización ajena y campos privados conforme al contrato. No enviar eventos simulados a servicios externos.
+El recorrido autorizado utiliza únicamente las rutas HTTP existentes para crear datos ficticios. No inserta SQL, no ejecuta seeds y no intercepta respuestas de negocio. Bloquea solamente las teselas externas del mapa. Cubre:
 
-La suite con fixtures no sustituye este recorrido. La [CI 41884285818](https://github.com/Nicolas923-source/Ganadito/actions/runs/41884285818) ya acredita acceso, publicación, puja, cierre y orden en servicios efímeros del SHA `17a3af7`. No acredita staging, concurrencia no cubierta, privacidad resuelta ni transporte WS de producción. Mientras falten las correcciones bloqueantes y la revisión final de Nicolás, V06 no queda aceptado al 100%.
+- Registro/acceso, publicación web, puja persistida e idempotencia, cierre automático por el worker y orden `PENDIENTE_PAGO`, todos sobre el mismo lote publicado desde la interfaz.
+- Recuperación de sesión, precio y secuencia oficiales mediante HTTP tras una recarga real; rechazo opaco 404 de una orden frente a otra organización y checkout 503 mientras los pagos están desactivados.
+- Dos organizaciones ficticias, un ESTABLO fuera de la rejilla y un establecimiento público con cotizaciones. Consultas anónimas, ajenas y propietarias verifican coordenadas aproximadas y dirección null para el establo ajeno, precisión y dirección propias, y precisión pública para el otro establecimiento. El navegador verifica avisos, área del mapa, lista, popup y selección Spot.
+- Pasaporte propietario COMPLETA con metadata privada y hashes encadenados, y verificación de integridad del servidor. La API PUBLICA anónima/ajena devuelve autor y organización null, metadata permitida o redactada y omite ambos hashes; se comprueban también 401 y 404. La ruta pública web sigue desactivada y no consulta pasaportes.
+
+La suite con fixtures cubre además errores, ausencias y respuestas malformadas. La prueba real y la compilación acreditan exclusivamente el artefacto y las rutas probadas del SHA final en servicios efímeros. No acreditan un host de staging, recuperación del host ni un rollback externo: esas acciones requieren host y autorización separados, y su evidencia se anota en el [registro de versión](release-record.example.md).
+
+La API integrada incluye tickets de un solo uso, validación de membresía vigente y supervisión de revocación; esa implementación no habilita automáticamente el consumidor WS del navegador. Su adaptación y aceptación con expiración, cambio de contexto, Bearer/ticket según el cliente y revocación siguen fuera de este recorrido HTTP. No usar la antigua observación sobre logs como descripción del estado actual.
+
+La entrega se cuenta sobre **24 criterios: 18 técnicos y 6 aceptaciones humanas**. Una CI verde puede sustentar criterios técnicos según la matriz, pero no registra las seis aceptaciones ni declara 24/24. El resultado del SHA final y la decisión de Nicolás se documentan por separado.
 
 ## Recuperación sin pérdida de datos
 
@@ -94,7 +98,7 @@ La suite con fixtures no sustituye este recorrido. La [CI 41884285818](https://g
 2. Identificar el artefacto anterior y sus migraciones compatibles en el registro de versión. Verificar si el cambio es solo web o también API/esquema. No ejecutar SQL inverso ni reiniciar una base para arreglar una pantalla.
 3. Si el esquema es compatible, el responsable del host vuelve a desplegar el artefacto anterior identificado por SHA y conserva las variables del entorno. Anotar ID del despliegue y hora. No usar `git reset --hard`, force-push ni borrado de volúmenes como recuperación operativa.
 4. Si el esquema es incompatible o se sospecha pérdida de datos, Nicolás prepara una corrección hacia adelante o restauración coordinada sobre una copia aislada. Un snapshot de Neon no se restaura ni sobrescribe sin autorización explícita. No alterar migraciones ya aplicadas.
-5. Verificar acceso, snapshot, lectura de órdenes, privacidad y WS en la versión recuperada, además de una operación PostgreSQL. Confirmar que órdenes y efectos no se duplicaron y que pagos siguen desactivados.
+5. Verificar acceso, recuperación HTTP y recarga del snapshot, lectura de órdenes y privacidad en la versión recuperada, además de una operación PostgreSQL coordinada con Nicolás. Confirmar que órdenes y efectos no se duplicaron y que pagos siguen desactivados. Validar WS por separado cuando esté autorizado y habilitado.
 6. Registrar responsable, resultado, SHA recuperado, impacto y acciones pendientes. Reabrir promoción solo tras checks y revisión cruzada.
 
 ## Migraciones presentes en la base dde293b

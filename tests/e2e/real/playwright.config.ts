@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
-import { assertIsolatedRealEnvironment } from './environment.mjs';
+import { isolatedWebEnvironment } from './environment.mjs';
 
-assertIsolatedRealEnvironment(process.env);
+isolatedWebEnvironment(process.env);
 
 export default defineConfig({
   testDir: '.',
@@ -30,7 +30,7 @@ export default defineConfig({
       timeout: 60_000
     },
     {
-      command: 'npm run dev:web -- --host 127.0.0.1 --port 4180 --strictPort',
+      command: 'node tests/e2e/real/web.mjs',
       cwd: '../../..',
       env: {
         PUBLIC_API_URL: '',
@@ -39,7 +39,7 @@ export default defineConfig({
       },
       url: 'http://127.0.0.1:4180/acceso',
       reuseExistingServer: false,
-      timeout: 60_000
+      timeout: 120_000
     }
   ]
 });

@@ -23,7 +23,7 @@
   let offsetMapa = $state(0);
   let offsetSpot = $state(0);
   const limite = 50;
-  let mapaComponente: { centrarEn: (lat: number, lon: number, zoom?: number) => void } | undefined;
+  let mapaComponente: { centrarEn: (lat: number, lon: number, ubicacionAproximada: boolean) => void } | undefined;
   let peticionMapa: AbortController | undefined;
   let peticionSpot: AbortController | undefined;
 
@@ -37,17 +37,19 @@
     return esObjeto(value) && typeof value.id === 'string' && typeof value.nombre_comercial === 'string' &&
       typeof value.tipo === 'string' && esNumero(value.latitud) && value.latitud >= -90 && value.latitud <= 90 &&
       esNumero(value.longitud) && value.longitud >= -180 && value.longitud <= 180 &&
+      typeof value.ubicacion_aproximada === 'boolean' &&
       (value.direccion_texto == null || typeof value.direccion_texto === 'string') &&
-      (value.distancia_km === undefined || esNumero(value.distancia_km));
+      (value.distancia_km == null || (esNumero(value.distancia_km) && value.distancia_km >= 0));
   }
   function esCotizacion(value: unknown): value is ItemCotizacionVisual {
     return esObjeto(value) && ['id', 'producto', 'categoria', 'calidad', 'moneda', 'unidad_medida', 'procedencia_ubigeo', 'vigencia_hasta'].every(key => typeof value[key] === 'string') &&
-      esNumero(value.precio_unitario) && typeof value.verificado === 'boolean' &&
+      esNumero(value.precio_unitario) && typeof value.verificado === 'boolean' && typeof value.ubicacion_aproximada === 'boolean' &&
       Number.isFinite(Date.parse(value.vigencia_hasta as string)) &&
       (value.establecimiento_id == null || typeof value.establecimiento_id === 'string') &&
       (value.establecimiento_nombre == null || typeof value.establecimiento_nombre === 'string') &&
       (value.latitud == null || (esNumero(value.latitud) && value.latitud >= -90 && value.latitud <= 90)) &&
-      (value.longitud == null || (esNumero(value.longitud) && value.longitud >= -180 && value.longitud <= 180));
+      (value.longitud == null || (esNumero(value.longitud) && value.longitud >= -180 && value.longitud <= 180)) &&
+      ((value.latitud == null) === (value.longitud == null));
   }
 
   async function consultarMapa() {
@@ -117,7 +119,7 @@
   function seleccionarCotizacion(cotizacion: ItemCotizacionVisual) {
     selectedId = cotizacion.establecimiento_id ?? null;
     if (Number.isFinite(cotizacion.latitud) && Number.isFinite(cotizacion.longitud)) {
-      mapaComponente?.centrarEn(cotizacion.latitud!, cotizacion.longitud!);
+      mapaComponente?.centrarEn(cotizacion.latitud!, cotizacion.longitud!, cotizacion.ubicacion_aproximada);
     }
   }
 </script>
@@ -150,7 +152,7 @@
       {:else if errorMapa}<p role="alert" class="rounded-xl bg-rose-950/40 border border-rose-800 p-4 text-rose-200">{errorMapa}</p>
       {:else if establecimientos.length === 0}<p role="status" class="rounded-xl bg-slate-900 p-4 text-slate-400">No se encontraron establecimientos para esta consulta.</p>{/if}
       <div class="h-[440px]"><MapaInteractivo bind:this={mapaComponente} {establecimientos} {selectedId} centroDefecto={[latitud, longitud]} onSelectEstablecimiento={(establecimiento) => { selectedId = establecimiento.id; }} /></div>
-      {#if establecimientos.length > 0}<ul class="divide-y divide-slate-800 rounded-xl border border-slate-800">{#each establecimientos as establecimiento (establecimiento.id)}<li><button type="button" class="w-full p-3 text-left hover:bg-slate-800 rounded-xl" onclick={() => { selectedId = establecimiento.id; mapaComponente?.centrarEn(establecimiento.latitud, establecimiento.longitud); }}><span class="font-medium text-white">{establecimiento.nombre_comercial}</span><span class="block text-xs text-slate-400">{establecimiento.tipo} · {establecimiento.distancia_km === undefined ? 'Distancia no informada' : Number(establecimiento.distancia_km).toFixed(1) + ' km'}</span></button></li>{/each}</ul>{/if}
+      {#if establecimientos.length > 0}<ul class="divide-y divide-slate-800 rounded-xl border border-slate-800">{#each establecimientos as establecimiento (establecimiento.id)}<li><button type="button" class="w-full p-3 text-left hover:bg-slate-800 rounded-xl" onclick={() => { selectedId = establecimiento.id; mapaComponente?.centrarEn(establecimiento.latitud, establecimiento.longitud, establecimiento.ubicacion_aproximada); }}><span class="font-medium text-white">{establecimiento.nombre_comercial}</span><span class="block text-xs text-slate-400">{establecimiento.tipo} · {establecimiento.ubicacion_aproximada ? 'Ubicación aproximada' : 'Ubicación exacta'}</span><span class="block text-xs text-slate-400">{establecimiento.distancia_km == null ? 'Distancia no informada' : (establecimiento.ubicacion_aproximada ? 'Distancia aproximada: ' : 'Distancia: ') + establecimiento.distancia_km.toFixed(1) + ' km'}</span></button></li>{/each}</ul>{/if}
       <div class="flex items-center justify-between text-sm"><button class="text-emerald-400 disabled:opacity-40" type="button" disabled={offsetMapa === 0 || cargandoMapa} onclick={() => { offsetMapa = Math.max(0, offsetMapa - limite); void consultarMapa(); }}>Mapa anterior</button><span class="text-slate-500">Página {Math.floor(offsetMapa / limite) + 1}</span><button class="text-emerald-400 disabled:opacity-40" type="button" disabled={establecimientos.length < limite || cargandoMapa} onclick={() => { offsetMapa += limite; void consultarMapa(); }}>Mapa siguiente</button></div>
     </section>
     <section class="space-y-3" aria-label="Pizarra Spot" aria-busy={cargandoSpot}>

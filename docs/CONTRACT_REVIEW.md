@@ -2,6 +2,12 @@
 
 Este documento conserva el inventario inicial de Víctor sobre `dde293bc977ac090d631b6c90a2cb4bb6efcb40e` y registra debajo su estado de integración. No publica ni modifica contratos API. Nicolás conserva la edición de `packages/contracts/src/**` y `docs/api/**`.
 
+## Estado vigente de V05 — 5 de noviembre de 2026
+
+Base `5b73e470`: Nicolás integró #37/#44 y sus correcciones #46–#50. #46 valida tipos de trazabilidad, usa lookup seguro y tipa las lecturas públicas; #50 omite ambos hashes en PUBLICA y conserva la cadena privada. Se adopta `PasaporteDigitalVista` original de main. El propietario aprobó esa política y la [transferencia V05](TRANSFERENCIA_V05_2026-11-04.md); no se repite la implementación backend.
+
+La entrega web representa ubicaciones aproximadas sin atribuirles precisión, discrimina PUBLICA/COMPLETA y añade evidencia integrada con web compilada. Las descripciones de defectos de los apartados históricos no acreditan su persistencia tras estas correcciones. El transporte WS web, la ruta pública web de pasaporte y los pagos reales siguen desactivados; sus endpoints API permanecen registrados. La aceptación humana de Nicolás sigue siendo una condición separada de la CI.
+
 ## Actualización del 4 de noviembre de 2026
 
 El contrato de acceso, lotes, pujas, envelope público WS y GET de órdenes se revisó e integró mediante [#29](https://github.com/Nicolas923-source/Ganadito/pull/29), único PR autorizado para fusión por el propietario. Main contractual: `2ffe7d4`. Las tablas siguientes describen la base inicial; no significan que N01 o GET de órdenes sigan sin implementación.
