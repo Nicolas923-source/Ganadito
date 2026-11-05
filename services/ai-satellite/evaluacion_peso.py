@@ -38,13 +38,16 @@ MAX_PARES = 2000  # 5000 pares tardaban ~2,2 s; 2000 basta para el piloto
 class ParEvaluacion(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    peso_real_kg: float = Field(gt=0, le=2000, description="Peso de balanza")
-    peso_estimado_kg: float | None = Field(default=None, gt=0, le=2000)
-    rango_min_kg: float | None = Field(default=None, gt=0)
-    rango_max_kg: float | None = Field(default=None, gt=0)
-    largo_corporal_cm: float | None = Field(default=None, gt=0, le=400)
-    profundidad_pecho_cm: float | None = Field(default=None, gt=0, le=200)
-    perimetro_cinta_cm: float | None = Field(default=None, gt=0, le=400)
+    # Límites físicos plausibles (bovinos, de ternero a toro adulto). Además de rechazar
+    # datos imposibles, evitan desbordes numéricos: con perímetros de 1e-150 cm, exp(a)
+    # desbordaba (500) y con pesos de 1e-306 kg las métricas salían inf/NaN.
+    peso_real_kg: float = Field(ge=10, le=2000, description="Peso de balanza")
+    peso_estimado_kg: float | None = Field(default=None, ge=10, le=2000)
+    rango_min_kg: float | None = Field(default=None, ge=1, le=5000)
+    rango_max_kg: float | None = Field(default=None, ge=1, le=5000)
+    largo_corporal_cm: float | None = Field(default=None, ge=30, le=400)
+    profundidad_pecho_cm: float | None = Field(default=None, ge=10, le=200)
+    perimetro_cinta_cm: float | None = Field(default=None, ge=30, le=400)
 
 
 class EvaluacionPesoInput(BaseModel):
@@ -89,7 +92,9 @@ class CalibracionFormula(BaseModel):
     n: int
     mape_schaeffer_original: float
     solo_escala: AjusteFormula
-    libre: AjusteFormula | None = Field(description="None si todos los S son iguales (no identificable)")
+    libre: AjusteFormula | None = Field(
+        description="None si no es identificable o evaluable: S constante o un punto con apalancamiento ~1"
+    )
     recomendado: str
 
 
@@ -167,6 +172,17 @@ def calibrar_relacion(pares: list[ParEvaluacion]) -> CalibracionRelacion | None:
     )
 
 
+def _sig(valor: float, cifras: int = 7) -> float:
+    """Redondeo a cifras SIGNIFICATIVAS: round(x, 5) convertía 2.67e-8 en 0.0."""
+    if valor == 0 or not math.isfinite(valor):
+        return valor
+    return float(f"{valor:.{cifras}g}")
+
+
+# Por debajo de esto, 1 - h_ii hace inestable (o infinito) el residuo LOOCV.
+MIN_UNO_MENOS_APALANCAMIENTO = 1e-8
+
+
 def _mape_desde_log(y: np.ndarray, prediccion_log: np.ndarray) -> float:
     real = np.exp(y)
     return float(np.mean(np.abs(np.exp(prediccion_log) - real) / real))
@@ -179,27 +195,36 @@ def ajustar_solo_escala(x: np.ndarray, y: np.ndarray) -> AjusteFormula:
     a = float(np.mean(d))
     loo = (np.sum(d) - d) / (n - 1)
     return AjusteFormula(
-        a=round(a, 5), b=1.0, factor_escala=round(math.exp(a), 5),
-        sigma_log=round(float(np.std(d, ddof=1)), 5),
+        a=_sig(a), b=1.0, factor_escala=_sig(math.exp(a)),
+        sigma_log=_sig(float(np.std(d, ddof=1))),
         mape_loocv=round(_mape_desde_log(y, x + loo), 4),
     )
 
 
-def ajustar_libre(x: np.ndarray, y: np.ndarray) -> AjusteFormula:
-    """MCO de ln W sobre ln S. LOOCV cerrado: residuo_i / (1 - h_ii)."""
+def ajustar_libre(x: np.ndarray, y: np.ndarray) -> AjusteFormula | None:
+    """
+    MCO de ln W sobre ln S. LOOCV cerrado: residuo_i / (1 - h_ii).
+    Devuelve None si el ajuste no es evaluable: un punto con apalancamiento ~1 (p. ej.,
+    toda la variación de S depende de un solo animal) hace que retirarlo deje la
+    pendiente sin identificar y el residuo LOOCV sea infinito.
+    """
     diseno = np.column_stack([np.ones_like(x), x])
     coef, *_ = np.linalg.lstsq(diseno, y, rcond=None)
     residuos = y - diseno @ coef
     xtx_inv = np.linalg.inv(diseno.T @ diseno)
     apalancamiento = np.einsum("ij,jk,ik->i", diseno, xtx_inv, diseno)
+    if np.any(1 - apalancamiento < MIN_UNO_MENOS_APALANCAMIENTO):
+        return None
     loo_residuos = residuos / (1 - apalancamiento)
     n = len(y)
-    return AjusteFormula(
-        a=round(float(coef[0]), 5), b=round(float(coef[1]), 5),
-        factor_escala=round(math.exp(float(coef[0])), 5),
-        sigma_log=round(float(np.sqrt(np.sum(residuos**2) / (n - 2))), 5),
+    ajuste = AjusteFormula(
+        a=_sig(float(coef[0])), b=_sig(float(coef[1])),
+        factor_escala=_sig(math.exp(float(coef[0]))),
+        sigma_log=_sig(float(np.sqrt(np.sum(residuos**2) / (n - 2)))),
         mape_loocv=round(_mape_desde_log(y, y - loo_residuos), 4),
     )
+    valores = (ajuste.a, ajuste.b, ajuste.factor_escala, ajuste.sigma_log, ajuste.mape_loocv)
+    return ajuste if all(math.isfinite(v) for v in valores) and ajuste.factor_escala > 0 else None
 
 
 def calibrar_formula(pares: list[ParEvaluacion]) -> CalibracionFormula | None:
@@ -209,8 +234,13 @@ def calibrar_formula(pares: list[ParEvaluacion]) -> CalibracionFormula | None:
     s = np.array([float(z.peso_schaeffer_kg(p.perimetro_cinta_cm, p.largo_corporal_cm)) for p in candidatos])
     x = np.log(s)
     y = np.log([p.peso_real_kg for p in candidatos])
-    escala = ajustar_solo_escala(x, y)
-    libre = ajustar_libre(x, y) if np.var(x) > 1e-10 else None
+    try:
+        escala = ajustar_solo_escala(x, y)
+        libre = ajustar_libre(x, y) if np.var(x) > 1e-10 else None
+    except OverflowError:
+        return None
+    if not all(math.isfinite(v) for v in (escala.factor_escala, escala.mape_loocv, escala.sigma_log)) or escala.factor_escala <= 0:
+        return None
     # Con pocos datos el modelo libre sobreajusta: solo se recomienda si mejora el LOOCV
     # y hay muestra suficiente.
     recomendado = (
@@ -235,12 +265,20 @@ def evaluar(payload: EvaluacionPesoInput) -> EvaluacionPesoResult:
     advertencias: list[str] = []
     if metricas is None:
         advertencias.append(f"Se necesitan al menos {MIN_PARES_METRICAS} pares con peso estimado para medir el error.")
-    if relacion is None or formula is None:
+    completos = sum(p.largo_corporal_cm is not None and p.perimetro_cinta_cm is not None for p in payload.pares)
+    if formula is None and completos >= MIN_PARES_AJUSTE:
+        advertencias.append("No se pudo proponer una calibración de la fórmula: el ajuste no dio un resultado numérico válido.")
+    elif relacion is None or formula is None:
         advertencias.append(f"Se necesitan al menos {MIN_PARES_AJUSTE} pares completos para proponer una calibración.")
     if len(payload.pares) < PARES_RECOMENDADOS:
         advertencias.append(f"Con menos de {PARES_RECOMENDADOS} pesajes las métricas son poco estables.")
     if metricas and metricas.cobertura_intervalo is not None and metricas.cobertura_intervalo < metricas.cobertura_esperada - 0.1:
         advertencias.append("El intervalo cubre menos de lo prometido: la incertidumbre está subestimada.")
+    if formula is not None and formula.libre is None:
+        advertencias.append(
+            "El ajuste libre (a, b) no es evaluable con estos datos (S casi constante o dependiente de un solo "
+            "animal): se propone solo el factor de escala."
+        )
     if formula is not None:
         advertencias.append("sigma_modelo_log propuesto incluye el error de la cinta del piloto: es una cota superior.")
     advertencias.append("La propuesta no se aplica sola: debe revisarse y publicarse como una nueva versión.")

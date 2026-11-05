@@ -81,6 +81,13 @@ La CI del monorepo **todavía no ejecuta estas pruebas**: falta un job de Python
 
 Devuelve una `propuesta` con `aplicado=false`. Para aplicarla se revisa y se publica como nueva `ParametrosZoometria.version`.
 
+**Salvaguardas numéricas:**
+- Los parámetros se redondean a **7 cifras significativas**, nunca a decimales fijos, para que un factor válido de 2,7e-8 no se convierta en 0.
+- Si un punto tiene apalancamiento ~1 (toda la variación de S depende de un solo animal), el ajuste libre **no es evaluable**: se devuelve `libre = null` y una advertencia, en lugar de un LOOCV infinito.
+- Una propuesta con un valor no finito o un factor ≤ 0 se descarta.
+
+**Validación sintética no es validación de campo.** Las pruebas con datos sintéticos (cobertura 0,890 y recuperación de parámetros conocidos) demuestran que el cálculo es correcto. La precisión del método solo se puede afirmar con **pesajes independientes de balanza** del piloto, medidos sobre animales que no se usaron para calibrar (validación con una muestra reservada). Hasta entonces, `validado=false`.
+
 **Salida.** El endpoint devuelve:
 
 - `peso_estimado_kg`, `rango_min_kg` y `rango_max_kg` (90 %);

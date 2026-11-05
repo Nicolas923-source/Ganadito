@@ -110,3 +110,43 @@ def test_todos_los_s_iguales_no_rompe_el_ajuste_libre():
     assert r.status_code == 200, r.text
     f = r.json()["calibracion_formula"]
     assert f["libre"] is None and f["recomendado"] == "solo_escala"
+
+
+def test_factor_de_escala_muy_pequeno_no_se_redondea_a_cero():
+    """Hallazgo #40: round(2.665556e-8, 5) devolvía 0.0. Se prueba la función de ajuste
+    directamente: por la API, pesos así de pequeños ya se rechazan por implausibles."""
+    factor = 2.665556e-8
+    x = np.log(np.linspace(300, 600, 12))
+    y = x + np.log(factor)
+    ajuste = ev.ajustar_solo_escala(x, y)
+    assert ajuste.factor_escala > 0
+    assert ajuste.factor_escala == pytest.approx(factor, rel=1e-6)
+
+
+def test_pares_fisicamente_imposibles_se_rechazan_sin_500():
+    """Revisión de #49: perímetros de 1e-150 cm desbordaban exp(a) y daban 500."""
+    absurdo = {"peso_real_kg": 400, "largo_corporal_cm": 1e-5, "perimetro_cinta_cm": 1e-150}
+    assert client.post(URL, json={"pares": [absurdo] * 12}).status_code == 422
+    assert client.post(URL, json={"pares": [{"peso_real_kg": 1e-306, "peso_estimado_kg": 400}] * 3}).status_code == 422
+
+
+def test_loocv_con_apalancamiento_uno_no_publica_infinito():
+    """Hallazgo #40: si toda la variación de S depende de un solo animal, h_ii = 1."""
+    base = {"largo_corporal_cm": 140, "perimetro_cinta_cm": 180}
+    pares = [{**base, "peso_real_kg": 400 + i} for i in range(11)]
+    pares.append({"largo_corporal_cm": 160, "perimetro_cinta_cm": 200, "peso_real_kg": 560})
+    r = client.post(URL, json={"pares": pares})
+    assert r.status_code == 200, r.text
+    f = r.json()["calibracion_formula"]
+    assert f["libre"] is None
+    assert f["recomendado"] == "solo_escala"
+    assert f["solo_escala"]["mape_loocv"] is not None
+    assert any("no es evaluable" in a for a in r.json()["advertencias"])
+    # Ningún número infinito o NaN en la respuesta.
+    assert "Infinity" not in r.text and "NaN" not in r.text
+
+
+def test_ajuste_libre_devuelve_none_con_apalancamiento_extremo():
+    x = np.array([5.0] * 11 + [6.0])
+    y = x + np.random.default_rng(1).normal(0, 0.01, 12)
+    assert ev.ajustar_libre(x, y) is None
