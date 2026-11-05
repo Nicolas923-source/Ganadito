@@ -13,6 +13,7 @@
   let auditando = $state(false);
   let errorConsulta = $state('');
   let errorAuditoria = $state('');
+  let peticionAuditoria: AbortController | undefined;
 
   $effect(() => {
     const id = identificador;
@@ -21,28 +22,32 @@
     verificacion = null;
     errorConsulta = '';
     errorAuditoria = '';
+    auditando = false;
     cargando = true;
     if (!id) { cargando = false; return; }
     consultarPasaporte(id, { anonimo: true, organizacionId: null, signal: controller.signal })
       .then((data) => { if (!controller.signal.aborted) pasaporte = data; })
       .catch((error) => { if (!controller.signal.aborted) errorConsulta = error instanceof Error ? error.message : 'No se pudo consultar el pasaporte.'; })
       .finally(() => { if (!controller.signal.aborted) cargando = false; });
-    return () => controller.abort();
+    return () => { controller.abort(); peticionAuditoria?.abort(); };
   });
 
   async function auditar() {
     if (!pasaporte || auditando) return;
+    peticionAuditoria?.abort();
+    const controller = new AbortController();
+    peticionAuditoria = controller;
     const id = identificador;
     auditando = true;
     verificacion = null;
     errorAuditoria = '';
     try {
-      const data = await verificarPasaporte(id, { anonimo: true });
-      if (identificador === id) verificacion = data;
+      const data = await verificarPasaporte(id, { anonimo: true, signal: controller.signal });
+      if (!controller.signal.aborted && identificador === id) verificacion = data;
     } catch (error) {
-      errorAuditoria = error instanceof Error ? error.message : 'No se pudo verificar la cadena.';
+      if (!controller.signal.aborted && identificador === id) errorAuditoria = error instanceof Error ? error.message : 'No se pudo verificar la cadena.';
     } finally {
-      auditando = false;
+      if (!controller.signal.aborted && identificador === id) auditando = false;
     }
   }
 </script>

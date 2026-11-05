@@ -51,6 +51,10 @@
     let observedSequence = 0;
     // Un ticket inválido o vencido se reintenta UNA vez con uno nuevo; después se desiste.
     let ticketRetried = false;
+    // Momento en que abrió el socket actual: una "expiración" justo al abrir no es una vida
+    // cumplida y no debe reconectar sin retroceso (evita un bucle de pedidos de ticket).
+    let openedAt = 0;
+    const VIDA_MINIMA_MS = 5000;
 
     async function querySnapshot(): Promise<boolean> {
       if (disposed || !id) return false;
@@ -143,6 +147,7 @@
         transport.onopen = () => {
           if (disposed || socket !== transport) return;
           ticketRetried = false;
+          openedAt = Date.now();
           // Recover official state on every connection, including the first one.
           connection = 'SINCRONIZANDO';
           void synchronize();
@@ -170,7 +175,11 @@
           if (disposed || socket !== transport) return;
           if (event.code === 1008) {
             // Vida máxima cumplida (15 min o exp del JWT): reconectar en seguida con ticket nuevo.
-            if (/expirada/i.test(event.reason)) { attempts = 0; retries = 0; scheduleReconnect(0); return; }
+            if (/expirada/i.test(event.reason)) {
+              const vidaCumplida = openedAt > 0 && Date.now() - openedAt >= VIDA_MINIMA_MS;
+              if (vidaCumplida) { attempts = 0; retries = 0; scheduleReconnect(1000); } else scheduleReconnect();
+              return;
+            }
             // Ticket vencido o consumido (p. ej., demora entre pedirlo y abrir): un reintento.
             if (/ticket/i.test(event.reason) && !ticketRetried) { ticketRetried = true; scheduleReconnect(0); return; }
             // Sesión revocada, sin contexto o lote inexistente: requiere nueva sesión o contexto.
