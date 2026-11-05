@@ -247,7 +247,10 @@ describe('Ciclo de Despacho, Confirmación de Entrega y Liquidación Neta al Ven
     assert.strictEqual(Number(body.liquidacion.monto_bruto), 5500.0);
     assert.strictEqual(Number(body.liquidacion.comision_retenida), 55.0);
     assert.strictEqual(Number(body.liquidacion.monto_neto_pagar), 5445.0);
-    assert.strictEqual(body.liquidacion.cuenta_bancaria_cci, cciPrueba);
+    // La CCI del vendedor no se entrega al comprador (queda solo en la liquidación).
+    assert.ok(!('cuenta_bancaria_cci' in body.liquidacion));
+    assert.ok(!JSON.stringify(body).includes(cciPrueba));
+    assert.doesNotMatch(body.mensaje, /custodia/i);
     assert.strictEqual(body.liquidacion.estado, 'PENDIENTE_DISPERSION');
 
     // 3.1 Verificar en base de datos la orden

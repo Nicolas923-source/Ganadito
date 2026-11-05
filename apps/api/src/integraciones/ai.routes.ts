@@ -1,5 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { AiClientService } from './ai-client.service.js';
+import { createAuthMiddleware } from '../auth/auth.middleware.js';
+import type pg from 'pg';
 import type {
   VideoAnalisisInput,
   AnalisisBromatologicoInput,
@@ -7,6 +9,7 @@ import type {
 } from '@ganadito/contracts';
 
 export interface AiRoutesOptions {
+  pool: pg.Pool;
   aiClient?: AiClientService;
   aiServiceUrl?: string;
 }
@@ -20,6 +23,11 @@ export const aiRoutes: FastifyPluginAsync<AiRoutesOptions> = async (fastify, opt
 
   // Exponer referencia en la instancia para pruebas o reconfiguración dinámica
   (fastify as any).aiClient = aiClient;
+
+  // Ninguna ruta de IA es anónima: antes servían de proxy abierto hacia el satélite
+  // (videos a FFmpeg, apertura del circuit breaker con 3 fallos).
+  const authenticate = createAuthMiddleware(options.pool);
+  fastify.addHook('onRequest', authenticate);
 
   /**
    * POST /api/v1/ia/vision/analizar-video

@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import type pg from 'pg';
-import { LogisticaService, LogisticaError, type RegistrarUnidadInput } from './logistica.service.js';
+import { LogisticaService, LogisticaError, type RegistrarUnidadInput, type VisorFlete } from './logistica.service.js';
 import { createAuthMiddleware } from '../auth/auth.middleware.js';
 import type {
   CotizarFleteInput,
@@ -17,6 +17,12 @@ export const logisticaRoutes: FastifyPluginAsync<LogisticaRoutesOptions> = async
   const { pool } = options;
   const logisticaService = new LogisticaService(pool);
   const authenticate = createAuthMiddleware(pool);
+  // El rol se toma SOLO del contexto activo (antes valía TRANSPORTISTA en cualquier organización).
+  const visor = (request: { userSession?: { userId: string; activeOrganizationId?: string; activeRole?: string } }): VisorFlete => ({
+    userId: request.userSession!.userId,
+    organizacionId: request.userSession!.activeOrganizationId,
+    esTransportista: request.userSession!.activeRole === 'TRANSPORTISTA'
+  });
 
   /**
    * POST /api/v1/logistica/cotizar
@@ -24,9 +30,14 @@ export const logisticaRoutes: FastifyPluginAsync<LogisticaRoutesOptions> = async
    */
   fastify.post<{ Body: CotizarFleteInput }>(
     '/cotizar',
+    // Antes era anónima y con distancias exactas: permitía triangular establos ajenos.
+    { onRequest: [authenticate] },
     async (request, reply) => {
       try {
-        const resultado = await logisticaService.cotizarFlete(request.body ?? ({} as any));
+        const resultado = await logisticaService.cotizarFlete(
+          request.body ?? ({} as any),
+          request.userSession!.activeOrganizationId ?? null
+        );
         return reply.status(200).send(resultado);
       } catch (err: any) {
         if (err instanceof LogisticaError) {
@@ -121,9 +132,13 @@ export const logisticaRoutes: FastifyPluginAsync<LogisticaRoutesOptions> = async
     { preHandler: [authenticate] },
     async (request, reply) => {
       const session = request.userSession!;
+      if (!session.activeOrganizationId) {
+        return reply.status(403).send({ statusCode: 403, error: 'Forbidden', message: 'Se requiere una organización activa.' });
+      }
       try {
         const solicitud = await logisticaService.crearSolicitud(
           session.userId,
+          session.activeOrganizationId,
           request.body ?? ({} as any)
         );
         return reply.status(201).send(solicitud);
@@ -154,7 +169,7 @@ export const logisticaRoutes: FastifyPluginAsync<LogisticaRoutesOptions> = async
     { preHandler: [authenticate] },
     async (request, reply) => {
       try {
-        const solicitud = await logisticaService.obtenerSolicitudPorId(request.params.id);
+        const solicitud = await logisticaService.obtenerSolicitudPorId(request.params.id, visor(request));
         return reply.status(200).send(solicitud);
       } catch (err: any) {
         if (err instanceof LogisticaError) {
@@ -183,7 +198,7 @@ export const logisticaRoutes: FastifyPluginAsync<LogisticaRoutesOptions> = async
     { preHandler: [authenticate] },
     async (request, reply) => {
       try {
-        const solicitudes = await logisticaService.listarSolicitudes({
+        const solicitudes = await logisticaService.listarSolicitudes(visor(request), {
           estado: request.query.estado,
           transportista_id: request.query.transportista_id
         });
@@ -209,10 +224,8 @@ export const logisticaRoutes: FastifyPluginAsync<LogisticaRoutesOptions> = async
     async (request, reply) => {
       const session = request.userSession!;
 
-      // Validar rol TRANSPORTISTA
-      const esTransportista =
-        session.activeRole === 'TRANSPORTISTA' ||
-        (await verificarRolTransportista(pool, session.userId));
+      // Rol TRANSPORTISTA en el contexto ACTIVO.
+      const esTransportista = session.activeRole === 'TRANSPORTISTA';
 
       if (!esTransportista) {
         return reply.status(403).send({
@@ -291,14 +304,3 @@ export const logisticaRoutes: FastifyPluginAsync<LogisticaRoutesOptions> = async
     }
   );
 };
-
-async function verificarRolTransportista(pool: pg.Pool, userId: string): Promise<boolean> {
-  const res = await pool.query<{ exists: boolean }>(
-    `SELECT EXISTS(
-       SELECT 1 FROM user_organizaciones_roles
-       WHERE user_id = $1 AND rol = 'TRANSPORTISTA'
-     ) AS exists;`,
-    [userId]
-  );
-  return Boolean(res.rows[0]?.exists);
-}

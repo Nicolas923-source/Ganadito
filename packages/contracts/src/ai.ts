@@ -18,7 +18,8 @@ export interface VideoAnalisisInput {
 
 export interface VisionAnalisisResult {
   biotipo_sugerido: string;
-  condicion_corporal_score: number;
+  /** null si el satélite no midió (contingencia): nunca un valor inventado. */
+  condicion_corporal_score: number | null;
   estimacion_dentaria: string;
   confianza_score: number;
   fotogramas_muestreados?: number;
@@ -60,8 +61,9 @@ export interface ChecklistMinsaInput {
 
 export interface ChecklistMinsaResult {
   normativa_referencia: string;
-  aprobado_sanitariamente: boolean;
-  rechazo_sanitario: boolean;
+  /** null = sin dictamen (contingencia: requiere inspección manual). */
+  aprobado_sanitariamente: boolean | null;
+  rechazo_sanitario: boolean | null;
   temperatura_recepcion_c: number;
   temperatura_conforme: boolean;
   color_conforme: boolean;

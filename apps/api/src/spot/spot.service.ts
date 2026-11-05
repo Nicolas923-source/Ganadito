@@ -34,9 +34,10 @@ export class SpotService {
       moneda = 'PEN',
       procedencia_ubigeo,
       fecha_registro,
-      vigencia_hasta,
-      verificado = false
+      vigencia_hasta
     } = input;
+    // La Pizarra es pública: una cotización nunca nace "verificada" por decisión del cliente.
+    const verificado = false;
 
     // 1. Validaciones básicas
     if (!establecimiento_id) {

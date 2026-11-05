@@ -62,11 +62,16 @@ export const subastasRoutes: FastifyPluginAsync<SubastasRoutesOptions> = async (
    */
   fastify.get<{ Params: { id: string } }>(
     '/subastas/:id/snapshot',
+    // Autenticación opcional: con token, el visitante ve si él es quien va ganando.
+    { onRequest: [async (request, reply) => { if (request.headers.authorization) return authenticate(request, reply); }] },
     async (request, reply) => {
       const { id } = request.params;
 
       try {
-        const snapshot = await subastasService.obtenerSnapshot(id);
+        const snapshot = await subastasService.obtenerSnapshot(id, {
+          userId: request.userSession?.userId,
+          organizacionId: request.userSession?.activeOrganizationId
+        });
         return reply.status(200).send(snapshot);
       } catch (err: any) {
         if (err instanceof SubastaError) {
