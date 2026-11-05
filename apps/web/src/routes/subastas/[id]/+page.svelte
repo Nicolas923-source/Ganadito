@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { apiRequest } from '#lib/api.ts';
+  import { apiRequest, ApiError } from '#lib/api.ts';
   import { apiWebSocketUrl, liveAuctionsEnabled } from '#lib/config.ts';
   import { session } from '#lib/session.ts';
   import { parseSnapshot, parseLiveEvent, type AuctionSnapshot, type AcceptedBid, type PublicBid } from '#lib/auctions/state.ts';
@@ -49,6 +49,12 @@
     let inFlight: Promise<boolean> | null = null;
     let refreshQueued = false;
     let observedSequence = 0;
+    // Un ticket inválido o vencido se reintenta UNA vez con uno nuevo; después se desiste.
+    let ticketRetried = false;
+    // Momento en que abrió el socket actual: una "expiración" justo al abrir no es una vida
+    // cumplida y no debe reconectar sin retroceso (evita un bucle de pedidos de ticket).
+    let openedAt = 0;
+    const VIDA_MINIMA_MS = 5000;
 
     async function querySnapshot(): Promise<boolean> {
       if (disposed || !id) return false;
@@ -100,16 +106,47 @@
     }
     refresh = synchronize;
 
-    function connect() {
+    function scheduleReconnect(delay = Math.min(1000 * 2 ** Math.min(attempts + 1, 5), 30000)) {
+      connection = 'RECONECTANDO';
+      attempts += 1;
+      retries = attempts;
+      clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(() => void connect(), delay);
+    }
+
+    /**
+     * Ticket de un solo uso (30 s, un lote) para abrir el WebSocket sin poner el JWT en la
+     * URL. Cada conexión y cada reconexión piden uno nuevo.
+     */
+    async function requestTicket(): Promise<string> {
+      const data = await apiRequest<unknown>(`/api/v1/subastas/${encodeURIComponent(id)}/live/ticket`, { method: 'POST', expectedStatus: 201 });
+      const ticket = data && typeof data === 'object' && 'ticket' in data ? (data as { ticket: unknown }).ticket : null;
+      if (typeof ticket !== 'string' || ticket.length < 20 || ticket.length > 100) throw new ApiError('La API no devolvió un ticket válido.', 502);
+      return ticket;
+    }
+
+    async function connect() {
       if (disposed || !useLive || !token) return;
       connection = attempts ? 'RECONECTANDO' : 'SINCRONIZANDO';
+      let ticket: string;
+      try {
+        ticket = await requestTicket();
+      } catch (cause) {
+        if (disposed || contextKey !== key) return;
+        // Sin sesión, sin contexto o lote inexistente: no tiene sentido reintentar en bucle.
+        if (cause instanceof ApiError && [401, 403, 404].includes(cause.status)) { connection = 'DESCONECTADO'; return; }
+        scheduleReconnect();
+        return;
+      }
+      if (disposed || contextKey !== key) return;
       try {
         const url = new URL(apiWebSocketUrl(`/api/v1/subastas/${encodeURIComponent(id)}/live`));
-        url.searchParams.set('access_token', token);
+        url.searchParams.set('ticket', ticket);
         const transport = new WebSocket(url);
         socket = transport;
         transport.onopen = () => {
           if (disposed || socket !== transport) return;
+          openedAt = Date.now();
           // Recover official state on every connection, including the first one.
           connection = 'SINCRONIZANDO';
           void synchronize();
@@ -135,24 +172,33 @@
         };
         transport.onclose = (event) => {
           if (disposed || socket !== transport) return;
-          // Invalid credentials or an unavailable lot require a new session/context,
-          // rather than repeating the same rejected handshake indefinitely.
-          if (event.code === 1008) { connection = 'DESCONECTADO'; return; }
-          connection = 'RECONECTANDO';
-          attempts += 1;
-          retries = attempts;
-          reconnectTimer = setTimeout(connect, Math.min(1000 * 2 ** Math.min(attempts, 5), 30000));
+          // Solo una conexión que vivió lo suficiente rehabilita el reintento de ticket: el
+          // servidor acepta el upgrade y LUEGO cierra con 1008, así que onopen no basta.
+          if (openedAt > 0 && Date.now() - openedAt >= VIDA_MINIMA_MS) ticketRetried = false;
+          if (event.code === 1008) {
+            // Vida máxima cumplida (15 min o exp del JWT): reconectar en seguida con ticket nuevo.
+            if (/expirada/i.test(event.reason)) {
+              const vidaCumplida = openedAt > 0 && Date.now() - openedAt >= VIDA_MINIMA_MS;
+              if (vidaCumplida) { attempts = 0; retries = 0; scheduleReconnect(1000); } else scheduleReconnect();
+              return;
+            }
+            // Ticket vencido o consumido (p. ej., demora entre pedirlo y abrir): un reintento.
+            if (/ticket/i.test(event.reason) && !ticketRetried) { ticketRetried = true; scheduleReconnect(0); return; }
+            // Sesión revocada, sin contexto o lote inexistente: requiere nueva sesión o contexto.
+            connection = 'DESCONECTADO';
+            return;
+          }
+          // 1011 (no se pudo verificar) y cortes de red: reintento con retroceso exponencial.
+          scheduleReconnect();
         };
       } catch {
         connection = 'DESCONECTADO';
-        attempts += 1;
-        retries = attempts;
-        reconnectTimer = setTimeout(connect, 5000);
+        scheduleReconnect(5000);
       }
     }
 
     void synchronize();
-    if (useLive) connect();
+    if (useLive) void connect();
     const polling = setInterval(() => { if (!inFlight) void synchronize(); }, 10000);
     const clock = setInterval(() => {
       if (successfulAt) seconds = Math.max(0, remainingAtSync - Math.floor((Date.now() - successfulAt) / 1000));
