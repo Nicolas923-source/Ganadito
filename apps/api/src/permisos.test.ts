@@ -8,7 +8,7 @@ import { crearUsuarioConRol } from './test-helpers.js';
 
 describe('N02: permisos por rol y aislamiento entre organizaciones', { concurrency: 1 }, () => {
   const pool = getPool();
-  const app = buildApp({ pool });
+  const app = buildApp({ pool, integracionesTributarias: true });
   const authService = new AuthService(pool);
   const password = 'PasswordPermisos2026!';
 

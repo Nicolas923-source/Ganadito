@@ -110,6 +110,20 @@ export interface LiquidacionSubastaCalculo {
  * Calcula con precisión decimal la comisión de la plataforma (1%) y el total a pagar por el comprador.
  * Redondea estrictamente a 2 decimales para integridad financiera en Soles (PEN).
  */
+/** Soles -> céntimos enteros. NUMERIC(…,2) llega como float con a lo sumo 2 decimales. */
+export function aCentimosPen(monto: number): number {
+  return Math.round(monto * 100);
+}
+
+/**
+ * Comisión en céntimos con aritmética ENTERA y redondeo half-up. Antes se calculaba
+ * Math.round(monto * tasa * 100), y 14.5 * 0.01 * 100 = 14.499999… daba 0.14 en vez de 0.15.
+ */
+export function comisionCentimos(montoCentimos: number, tasaComision: number): number {
+  const puntosBasicos = Math.round(tasaComision * 10_000);
+  return Math.floor((montoCentimos * puntosBasicos + 5_000) / 10_000);
+}
+
 export function calcularLiquidacionSubasta(
   montoAdjudicado: number,
   tasaComision: number = COMISION_PLATAFORMA_PORCENTAJE
@@ -118,8 +132,10 @@ export function calcularLiquidacionSubasta(
     throw new Error('El monto adjudicado debe ser un número positivo.');
   }
 
-  const comisionPlataforma = Math.round(montoAdjudicado * tasaComision * 100) / 100;
-  const totalAPagar = Math.round((montoAdjudicado + comisionPlataforma) * 100) / 100;
+  const montoC = aCentimosPen(montoAdjudicado);
+  const comisionC = comisionCentimos(montoC, tasaComision);
+  const comisionPlataforma = comisionC / 100;
+  const totalAPagar = (montoC + comisionC) / 100;
 
   return {
     montoAdjudicado,
@@ -144,8 +160,10 @@ export function calcularLiquidacionVendedor(
     throw new Error('El monto adjudicado debe ser un número positivo.');
   }
 
-  const comisionRetenida = Math.round(montoAdjudicado * tasaComision * 100) / 100;
-  const montoNetoPagar = Math.round((montoAdjudicado - comisionRetenida) * 100) / 100;
+  const montoC = aCentimosPen(montoAdjudicado);
+  const comisionC = comisionCentimos(montoC, tasaComision);
+  const comisionRetenida = comisionC / 100;
+  const montoNetoPagar = (montoC - comisionC) / 100;
 
   return {
     montoBruto: montoAdjudicado,

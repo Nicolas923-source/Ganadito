@@ -35,6 +35,11 @@ export function getDatabaseConfig(): DatabaseConfig {
     };
   }
 
+  // En producción no hay credenciales por defecto: con valores conocidos se conectaría a
+  // una base mal configurada en vez de fallar en el arranque.
+  if (process.env.NODE_ENV === 'production' && !process.env.DATABASE_PASSWORD) {
+    throw new Error('En producción se requiere DATABASE_URL o DATABASE_PASSWORD.');
+  }
   return {
     host: process.env.DATABASE_HOST ?? 'localhost',
     port: Number(process.env.DATABASE_PORT ?? 5432),

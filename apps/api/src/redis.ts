@@ -17,6 +17,9 @@ export function getRedisConfig(): RedisConfig {
     };
   }
 
+  if (process.env.NODE_ENV === 'production' && !process.env.REDIS_PASSWORD) {
+    throw new Error('En producción se requiere REDIS_URL o REDIS_PASSWORD.');
+  }
   return {
     host: process.env.REDIS_HOST ?? 'localhost',
     port: Number(process.env.REDIS_PORT ?? 6379),

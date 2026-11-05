@@ -11,7 +11,8 @@ describe('Adaptadores de Integración Tributaria (SEE-SUNAT) y Financiera (CAVAL
   const pool = getPool();
   const sunatAdapter = new SunatAdapter(pool);
   const cavaliAdapter = new CavaliAdapter(pool);
-  const app = buildApp({ pool, sunatAdapter, cavaliAdapter });
+  const app = buildApp({ pool, sunatAdapter, cavaliAdapter, integracionesTributarias: true });
+  const appApagada = buildApp({ pool });
   const authService = new AuthService(pool);
 
   let compradorToken: string;
@@ -128,6 +129,16 @@ describe('Adaptadores de Integración Tributaria (SEE-SUNAT) y Financiera (CAVAL
   after(async () => {
     await app.close();
     await closePool();
+  });
+
+  test('0. Sin TAX_INTEGRATIONS_ENABLED las escrituras SUNAT/CAVALI responden 503 (son simuladas)', async () => {
+    await appApagada.ready();
+    for (const url of ['/api/v1/tributario/liquidaciones-compra', '/api/v1/fintech/cavali/solicitar-factoring']) {
+      const r = await appApagada.inject({ method: 'POST', url, headers: { authorization: `Bearer ${compradorToken}` }, payload: {} });
+      assert.strictEqual(r.statusCode, 503, url);
+      assert.strictEqual(r.json().code, 'INTEGRACION_DESHABILITADA');
+    }
+    await appApagada.close();
   });
 
   test('1. Emisión exitosa de Liquidación de Compra Electrónica vinculada a orden liquidada: serie E001, correlativo correlacionado y transición a CONFIRMADO', async () => {

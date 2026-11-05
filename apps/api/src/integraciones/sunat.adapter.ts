@@ -154,8 +154,8 @@ export class SunatAdapter {
       // 1. Validar orden de compra y exigir que se encuentre en estado 'LIQUIDADO'
       // La liquidación de compra la emite el comprador: la orden debe pertenecer a la
       // organización activa como compradora. Si no, se responde 404 (no revelar existencia).
-      const ordenRes = await client.query<{ id: string; estado: string; total_a_pagar: string }>(
-        `SELECT id, estado, total_a_pagar
+      const ordenRes = await client.query<{ id: string; estado: string; total_a_pagar: string; monto_adjudicado: string }>(
+        `SELECT id, estado, total_a_pagar, monto_adjudicado
          FROM ordenes_compra
          WHERE id = $1 AND organizacion_compradora_id = $2
          FOR UPDATE;`,
@@ -182,7 +182,15 @@ export class SunatAdapter {
       const externalCorrelationId = `SUNAT-LCE-${serie}-${String(correlativo).padStart(8, '0')}-${crypto.randomUUID().slice(0, 8)}`;
 
       // Liquidación de compra: No genera IGV débito sino retención asumida o inafecto según régimen
-      const montoTotal = Number(input.monto_total_pen.toFixed(2));
+      // El monto sale de la orden (fuente de verdad). Antes se tomaba del cliente sin
+      // contrastar: se podía emitir una LCE por cualquier importe.
+      const montoTotal = Number(orden.monto_adjudicado);
+      if (Math.round(input.monto_total_pen * 100) !== Math.round(montoTotal * 100)) {
+        throw new SunatError(
+          `monto_total_pen (${input.monto_total_pen}) no coincide con el monto adjudicado de la orden (${montoTotal}).`,
+          400
+        );
+      }
       const montoSubtotal = montoTotal;
       const montoIgv = 0.0;
 

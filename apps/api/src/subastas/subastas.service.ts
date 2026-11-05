@@ -17,6 +17,8 @@ export type CodigoErrorSubasta =
   | 'PUJA_PROPIO_LOTE';
 
 const ESTADOS_INICIALES_LOTE = new Set(['ACTIVO', 'BORRADOR']);
+/** Tope comercial: deja margen a la comisión dentro de ordenes_compra NUMERIC(12,2). */
+export const MONTO_MAXIMO_PEN = 1_000_000_000;
 
 /** Convierte un monto a céntimos; null si no es un número con como máximo 2 decimales. */
 function aCentimos(valor: unknown): number | null {
@@ -57,6 +59,9 @@ export class SubastasService {
     if (typeof precio_base !== 'number' || precio_base <= 0) {
       throw new SubastaError('precio_base debe ser un número positivo mayor a 0.', 400);
     }
+    if (precio_base > MONTO_MAXIMO_PEN) {
+      throw new SubastaError(`precio_base no puede superar S/ ${MONTO_MAXIMO_PEN.toLocaleString('es-PE')}.`, 400);
+    }
     if (typeof incremento_minimo !== 'number' || incremento_minimo <= 0) {
       throw new SubastaError('incremento_minimo debe ser un número positivo mayor a 0.', 400);
     }
@@ -95,7 +100,9 @@ export class SubastasService {
       codigo_lote?.trim() ||
       `LOTE-${Date.now().toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}`;
 
-    const res = await this.pool.query<LoteSubastaResponse>(
+    let res: pg.QueryResult<LoteSubastaResponse>;
+    try {
+      res = await this.pool.query<LoteSubastaResponse>(
       `INSERT INTO lotes_subasta (
          codigo_lote,
          vendedor_id,
@@ -140,6 +147,12 @@ export class SubastasService {
         creadoPorUserId ?? null
       ]
     );
+    } catch (err: any) {
+      if (err?.code === '23505') {
+        throw new SubastaError('Ya existe un lote con ese codigo_lote.', 409);
+      }
+      throw err;
+    }
 
     return res.rows[0]!;
   }
@@ -224,6 +237,11 @@ export class SubastasService {
       throw new SubastaError('idempotency_key admite como máximo 100 caracteres.', 400);
     }
     const montoCentimos = aCentimos(monto);
+    // Sin tope, una puja de 1e10 se aceptaba y luego el cierre fallaba al crear la orden
+    // (NUMERIC(12,2)): el lote quedaba ACTIVO para siempre, reintentándose en cada ciclo.
+    if (montoCentimos !== null && montoCentimos > MONTO_MAXIMO_PEN * 100) {
+      throw new SubastaError(`El monto no puede superar S/ ${MONTO_MAXIMO_PEN.toLocaleString('es-PE')}.`, 400);
+    }
     if (montoCentimos === null || montoCentimos <= 0) {
       throw new SubastaError('monto debe ser un número positivo con como máximo 2 decimales.', 400);
     }
