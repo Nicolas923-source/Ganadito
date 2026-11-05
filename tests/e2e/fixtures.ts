@@ -18,5 +18,11 @@ export async function installSession(page: Page, options: { organizationId?: str
   const token = fakeToken(organizationId, role);
   await page.addInitScript(token => sessionStorage.setItem('ganadito.session.token', token), token);
   await page.route('**/api/v1/auth/me', route => route.fulfill({ json: profile(organizationId, role) }));
+  // Ticket de un solo uso para el WebSocket (POST /live/ticket): uno distinto por pedido.
+  let emitidos = 0;
+  await page.route('**/api/v1/subastas/*/live/ticket', route => {
+    emitidos += 1;
+    return route.fulfill({ status: 201, json: { ticket: 'ticket-fixture-' + String(emitidos).padStart(4, '0') + '-' + 'x'.repeat(24), expira_en_segundos: 30 } });
+  });
   return token;
 }

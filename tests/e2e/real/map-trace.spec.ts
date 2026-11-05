@@ -215,17 +215,27 @@ test('V05 real: mapa y Spot aíslan coordenadas; pasaporte privado conserva cade
   await page.getByRole('button', { name: 'Cerrar sesión', exact: true }).click();
   await login(page, outsider);
   await page.goto(`/trazabilidad/${bovino.id}`);
-  await expect(page.getByRole('status').filter({ hasText: 'La vista completa no está disponible para tu organización.' })).toBeVisible();
+  // Otra organización recibe la vista PUBLICA real: sin la nota privada, sin hashes ni
+  // autor, y con la integridad confirmada por el servidor.
+  await expect(page.getByRole('status').filter({ hasText: 'Vista pública' })).toBeVisible();
+  await expect(page.getByText(`V05-${run}`, { exact: true })).toBeVisible();
   await expect(page.locator('body')).not.toContainText(privateNote);
-  await expect(page.getByRole('button', { name: 'Verificar cadena', exact: true })).toHaveCount(0);
+  await expect(page.getByText(/Hash Previo|Hash Bloque|USR-/)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Verificar cadena', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Integridad de la cadena' })).toContainText('El servidor confirmó la integridad de la cadena.');
 
-  let disabledRouteRequests = 0;
+  // Ruta del QR: siempre sin token, aunque haya sesión.
+  const qrAuthorization: (string | undefined)[] = [];
   page.on('request', pending => {
-    if (pending.url().includes(`/api/v1/trazabilidad/bovinos/${bovino.id}/`)) disabledRouteRequests++;
+    if (pending.url().includes(`/api/v1/trazabilidad/bovinos/${bovino.id}/`)) qrAuthorization.push(pending.headers()['authorization']);
   });
   await page.goto(`/trazabilidad/${bovino.id}/publico`);
-  await expect(page.getByRole('status').filter({ hasText: 'Este pasaporte todavía no tiene una vista pública habilitada.' })).toBeVisible();
-  expect(disabledRouteRequests).toBe(0);
+  await expect(page.getByRole('heading', { name: 'Pasaporte bovino público', exact: true })).toBeVisible();
+  await expect(page.getByText(`V05-${run}`, { exact: true })).toBeVisible();
+  await expect(page.locator('body')).not.toContainText(privateNote);
+  await expect(page.getByText(/Hash Previo|Hash Bloque|USR-/)).toHaveCount(0);
+  expect(qrAuthorization.length).toBeGreaterThan(0);
+  expect(qrAuthorization.every(value => value === undefined)).toBe(true);
 
   // Existing HTTP routes only; no test SQL, seeds, business-response interception
   // or special publication routes make these privacy assertions pass.
