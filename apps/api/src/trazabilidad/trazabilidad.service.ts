@@ -28,6 +28,34 @@ export function redactarMetadata(valor: unknown): Record<string, unknown> {
   return (redactar(valor ?? {}) as Record<string, unknown>) ?? {};
 }
 
+/**
+ * Lista BLANCA de metadata pública por tipo de evento (vista QR). Todo lo demás sale
+ * como '[REDACTADO]': un campo nuevo no se publica por accidente (antes bastaba con que
+ * su nombre no coincidiera con la lista negra, p. ej. "origen" o "fundo_nacimiento").
+ * Solo se publican valores primitivos; objetos y arreglos se redactan.
+ */
+export const METADATA_PUBLICA: Readonly<Record<string, ReadonlySet<string>>> = {
+  REGISTRO_INICIAL: new Set(['raza', 'sexo', 'fecha_nacimiento', 'peso_nacimiento_kg', 'tipo_parto']),
+  VACUNACION: new Set(['vacuna', 'dosis_ml', 'lote', 'campana_oficial', 'fecha']),
+  TRATAMIENTO: new Set(['producto', 'dosis_ml', 'dias_retiro', 'fecha_fin_retiro', 'fecha']),
+  PESAJE: new Set(['peso_vivo_kg', 'fecha']),
+  MOVILIZACION_CSTI: new Set(['csti_numero', 'guia_senasa', 'guia_transito_senasa', 'origen_distrito', 'destino_distrito', 'fecha']),
+  PESAJE_CAMAL: new Set(['camal_nombre', 'camal_codigo_oficial', 'peso_vivo_kg', 'peso_canal_caliente_kg', 'rendimiento_canal_pct']),
+  INSPECCION_POST_MORTEM: new Set(['camal_codigo_oficial', 'dictamen_post_mortem', 'resultado']),
+  CAMBIO_PROPIEDAD: new Set(['fecha'])
+};
+
+export function proyectarMetadataPublica(eventType: string, metadata: unknown): Record<string, unknown> {
+  const permitidas = METADATA_PUBLICA[eventType] ?? new Set<string>();
+  const out: Record<string, unknown> = {};
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return out;
+  for (const [k, v] of Object.entries(metadata as Record<string, unknown>)) {
+    const primitivo = v === null || ['string', 'number', 'boolean'].includes(typeof v);
+    out[k] = permitidas.has(k) && primitivo && !CLAVE_SENSIBLE.test(k) ? v : '[REDACTADO]';
+  }
+  return out;
+}
+
 const EVENTOS_CAMAL = new Set(['PESAJE_CAMAL', 'INSPECCION_POST_MORTEM']);
 
 export class TrazabilidadError extends Error {
@@ -299,9 +327,31 @@ export class TrazabilidadService {
     if (viewerOrgId && viewerOrgId === bovino.organizacion_id) {
       return { bovino, eventos: eventosRes.rows, vista: 'COMPLETA' };
     }
+    // Proyección explícita: la vista pública no revela qué organización es dueña del animal.
+    const bovinoPublico: Bovino = {
+      id: bovino.id,
+      codigo_arete: bovino.codigo_arete,
+      organizacion_id: null as unknown as string,
+      raza: bovino.raza,
+      sexo: bovino.sexo,
+      fecha_nacimiento: bovino.fecha_nacimiento,
+      estado: bovino.estado,
+      created_at: bovino.created_at,
+      updated_at: bovino.updated_at
+    };
     return {
-      bovino,
-      eventos: eventosRes.rows.map((e) => ({ ...e, autor_id: null as unknown as string, metadata: redactarMetadata(e.metadata) })),
+      bovino: bovinoPublico,
+      eventos: eventosRes.rows.map((e) => ({
+        id: e.id,
+        bovino_id: e.bovino_id,
+        secuencia: e.secuencia,
+        event_type: e.event_type,
+        metadata: proyectarMetadataPublica(e.event_type, e.metadata),
+        prev_hash: e.prev_hash,
+        current_hash: e.current_hash,
+        autor_id: null as unknown as string,
+        created_at: (e as EventoTrazabilidad & { created_at?: string | Date }).created_at
+      })) as EventoTrazabilidad[],
       vista: 'PUBLICA'
     };
   }

@@ -175,7 +175,9 @@ describe('N05: privacidad de ubicación en mapa y vista pública del pasaporte',
     assert.strictEqual(mov.autor_id, null);
     assert.strictEqual(mov.metadata.gps, '[REDACTADO]');
     assert.strictEqual(mov.metadata.dni_conductor, '[REDACTADO]');
-    assert.strictEqual(mov.metadata.destino, 'Feria Iquitos');
+    // Lista blanca: "destino" no es público (puede ser otro fundo); el distrito sí lo sería.
+    assert.strictEqual(mov.metadata.destino, '[REDACTADO]');
+    assert.strictEqual(publico.bovino.organizacion_id, null, 'la vista pública no revela la organización dueña');
 
     const ajeno = (await app.inject({ method: 'GET', url: `/api/v1/trazabilidad/bovinos/${bovinoId}/pasaporte`, headers: auth(ajenoToken) })).json();
     assert.strictEqual(ajeno.vista, 'PUBLICA');

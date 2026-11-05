@@ -163,6 +163,30 @@ describe('N04: cierre con organización correcta, consulta de órdenes y WebSock
     ).json();
     assert.strictEqual(p2.data.length, 1);
     assert.notStrictEqual(p2.data[0].id, p1.data[0].id);
+    assert.ok(!('cursor_ts' in p2.data[0]), 'la marca interna del cursor no se expone');
+  });
+
+  test('3b. Regresión: dos órdenes en el MISMO milisegundo no se saltan entre páginas', async () => {
+    const ordenes = await pool.query<{ id: string }>(
+      `SELECT o.id FROM ordenes_compra o WHERE o.organizacion_vendedora_id = $1 ORDER BY o.id LIMIT 2`,
+      [vendedor.orgId]
+    );
+    assert.strictEqual(ordenes.rows.length, 2);
+    // Mismo milisegundo, distinto microsegundo: con el cursor truncado a ms se perdía una.
+    await pool.query(`UPDATE ordenes_compra SET created_at = '2030-01-01T00:00:00.123100Z' WHERE id = $1`, [ordenes.rows[0]!.id]);
+    await pool.query(`UPDATE ordenes_compra SET created_at = '2030-01-01T00:00:00.123900Z' WHERE id = $1`, [ordenes.rows[1]!.id]);
+
+    const vistos: string[] = [];
+    let cursor: string | null = null;
+    for (let pagina = 0; pagina < 10; pagina++) {
+      const url: string = `/api/v1/ordenes?rol=vendedor&limit=1${cursor ? `&cursor=${cursor}` : ''}`;
+      const r: any = (await app.inject({ method: 'GET', url, headers: auth(vendedor.token) })).json();
+      vistos.push(...r.data.map((o: any) => o.id));
+      cursor = r.next_cursor;
+      if (!cursor) break;
+    }
+    for (const fila of ordenes.rows) assert.ok(vistos.includes(fila.id), `la orden ${fila.id} no debe saltarse`);
+    assert.strictEqual(new Set(vistos).size, vistos.length, 'sin duplicados');
   });
 
   test('4. WebSocket: sin token o con lote inexistente se cierra con 1008', async () => {
