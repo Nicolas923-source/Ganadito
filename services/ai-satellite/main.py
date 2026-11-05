@@ -3,12 +3,15 @@ Ganadito AI Satellite Service (Python 3.11+ / FastAPI / OpenCV / NumPy)
 - ExpoGanadito Video Pipeline (/api/v1/vision/analizar-video)
 - Dr. Ganadito Bromatología CIELAB (/api/v1/bromatologia/analizar-color)
 - Checklist Sanitario RM N.° 822-2018/MINSA (/api/v1/bromatologia/checklist-minsa)
+- Estimación orientativa de peso vivo por zoometría (/api/v1/peso/estimar, /estimar-multivista)
+- Evaluación y calibración del estimador con pesajes reales (/api/v1/peso/evaluar)
 """
 
 from __future__ import annotations
 
 import base64
 import tempfile
+import threading
 import os
 from typing import Any, List, Optional, Union
 
@@ -16,6 +19,18 @@ import cv2
 import numpy as np
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
+
+from evaluacion_peso import EvaluacionPesoInput, EvaluacionPesoResult, evaluar
+from peso import (
+    EstimacionMultivistaInput,
+    EstimacionMultivistaResult,
+    EstimacionPesoError,
+    EstimacionPesoInput,
+    EstimacionPesoResult,
+    ImagenDemasiadoGrandeError,
+    estimar_peso,
+    estimar_peso_multivista,
+)
 
 app = FastAPI(
     title="Ganadito AI Satellite Service",
@@ -404,6 +419,123 @@ async def endpoint_analizar_color(
         status_code=400,
         detail="Debe proporcionar 'imagen_base64', 'bgr_color' o un archivo de imagen.",
     )
+
+
+# Límite del cuerpo de las rutas de peso, ANTES de que se lea y parsee el JSON
+# (4 vistas x 8 MB en Base64 ≈ 43 MB no se aceptan: el máximo conjunto es 24 MB).
+MAX_CUERPO_PESO_BYTES = 26 * 1024 * 1024
+PREFIJO_PESO = "/api/v1/peso/"
+
+
+class _CuerpoDemasiadoGrande(Exception):
+    pass
+
+
+class LimiteCuerpoPeso:
+    """Middleware ASGI: rechaza con 413 por Content-Length o contando los bytes recibidos."""
+
+    def __init__(self, app_asgi, limite: int = MAX_CUERPO_PESO_BYTES):
+        self.app = app_asgi
+        self.limite = limite
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or not scope["path"].startswith(PREFIJO_PESO):
+            await self.app(scope, receive, send)
+            return
+        cabeceras = dict(scope.get("headers") or [])
+        declarado = cabeceras.get(b"content-length")
+        if declarado is not None and (not declarado.isdigit() or int(declarado) > self.limite):
+            await self._rechazar(send)
+            return
+
+        recibidos = 0
+        respuesta_iniciada = False
+
+        async def receive_limitado():
+            nonlocal recibidos
+            mensaje = await receive()
+            if mensaje["type"] == "http.request":
+                recibidos += len(mensaje.get("body", b""))
+                if recibidos > self.limite:
+                    raise _CuerpoDemasiadoGrande()
+            return mensaje
+
+        async def send_marcado(mensaje):
+            nonlocal respuesta_iniciada
+            if mensaje["type"] == "http.response.start":
+                respuesta_iniciada = True
+            await send(mensaje)
+
+        try:
+            await self.app(scope, receive_limitado, send_marcado)
+        except _CuerpoDemasiadoGrande:
+            if not respuesta_iniciada:
+                await self._rechazar(send)
+
+    @staticmethod
+    async def _rechazar(send):
+        cuerpo = b'{"detail":"El cuerpo de la solicitud supera el maximo permitido."}'
+        await send({"type": "http.response.start", "status": 413,
+                    "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(cuerpo)).encode())]})
+        await send({"type": "http.response.body", "body": cuerpo})
+
+
+app.add_middleware(LimiteCuerpoPeso)
+
+# Tope de estimaciones simultáneas: el Monte Carlo usa CPU y, sin tope, unas decenas
+# de solicitudes de 4 vistas agotarían el pool de hilos y frenarían los demás endpoints.
+MAX_ESTIMACIONES_SIMULTANEAS = 2
+ESPERA_TURNO_SEGUNDOS = 10.0
+_turnos_peso = threading.BoundedSemaphore(MAX_ESTIMACIONES_SIMULTANEAS)
+
+
+def _con_turno(funcion, *args):
+    if not _turnos_peso.acquire(timeout=ESPERA_TURNO_SEGUNDOS):
+        raise HTTPException(status_code=503, detail="Servicio de estimación ocupado; reintente en unos segundos.")
+    try:
+        return funcion(*args)
+    finally:
+        _turnos_peso.release()
+
+
+# Los endpoints de peso son `def` (no `async def`): la simulación Monte Carlo usa CPU y
+# FastAPI los ejecuta en su pool de hilos, sin bloquear el bucle de eventos.
+@app.post("/api/v1/peso/estimar", response_model=EstimacionPesoResult)
+def endpoint_estimar_peso(payload: EstimacionPesoInput) -> EstimacionPesoResult:
+    """
+    Estimación ORIENTATIVA del peso vivo a partir de un fotograma de perfil, 4 puntos
+    anatómicos y una calibración (marcador ArUco o referencia de longitud conocida).
+    No es un pesaje ni es vinculante: no debe usarse para liquidar por kilogramo.
+    """
+    try:
+        return _con_turno(estimar_peso, payload)
+    except ImagenDemasiadoGrandeError as err:
+        raise HTTPException(status_code=413, detail=str(err)) from err
+    except EstimacionPesoError as err:
+        raise HTTPException(status_code=422, detail=str(err)) from err
+
+
+@app.post("/api/v1/peso/estimar-multivista", response_model=EstimacionMultivistaResult)
+def endpoint_estimar_peso_multivista(payload: EstimacionMultivistaInput) -> EstimacionMultivistaResult:
+    """
+    Combina 2 a 4 fotos de perfil del MISMO animal (ponderación por inversa de la
+    varianza y prueba Q de heterogeneidad). Sigue siendo orientativo y no vinculante.
+    """
+    try:
+        return _con_turno(estimar_peso_multivista, payload)
+    except ImagenDemasiadoGrandeError as err:
+        raise HTTPException(status_code=413, detail=str(err)) from err
+    except EstimacionPesoError as err:
+        raise HTTPException(status_code=422, detail=str(err)) from err
+
+
+@app.post("/api/v1/peso/evaluar", response_model=EvaluacionPesoResult)
+def endpoint_evaluar_peso(payload: EvaluacionPesoInput) -> EvaluacionPesoResult:
+    """
+    Mide el error del estimador contra pesajes de balanza y PROPONE parámetros
+    calibrados. No guarda datos ni aplica la propuesta.
+    """
+    return _con_turno(evaluar, payload)
 
 
 @app.post("/api/v1/bromatologia/checklist-minsa", response_model=ChecklistMinsaResult)
