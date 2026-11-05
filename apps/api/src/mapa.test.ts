@@ -58,6 +58,13 @@ describe('Módulo de Mapa Geoespacial (PostGIS) y Pizarra Spot', () => {
   });
 
   after(async () => {
+    // Borrar lo creado: si se acumula, la búsqueda radial (limit=100) deja fuera los
+    // establecimientos de esta ejecución y la prueba 3 falla en bases locales reutilizadas.
+    const ids = [establoLimaId, establoCallaoId, establoPiuraId].filter(Boolean);
+    if (ids.length > 0) {
+      await pool.query('DELETE FROM cotizaciones_spot WHERE establecimiento_id = ANY($1::uuid[])', [ids]);
+      await pool.query('DELETE FROM establecimientos WHERE id = ANY($1::uuid[])', [ids]);
+    }
     await app.close();
     await closePool();
   });
