@@ -44,7 +44,12 @@ function encodeCursor(row: { cursor_ts: string; id: string }): string {
 function decodeCursor(cursor: string): [string, string] {
   try {
     const [ts, id] = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
-    if (typeof ts !== 'string' || !CURSOR_TS_RE.test(ts) || typeof id !== 'string' || !UUID_RE.test(id)) {
+    if (typeof ts !== 'string' || !CURSOR_TS_RE.test(ts) || Number.isNaN(Date.parse(ts)) || typeof id !== 'string' || !UUID_RE.test(id)) {
+      throw new Error();
+    }
+    // Date normaliza días inexistentes y 24:00; PostgreSQL debe recibir una fecha válida,
+    // conservando la cadena original de seis decimales para el cursor.
+    if (ts.startsWith('0000-') || new Date(ts).toISOString().slice(0, 19) !== ts.slice(0, 19)) {
       throw new Error();
     }
     return [ts, id];
