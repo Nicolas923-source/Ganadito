@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { getPool, closePool, runInitialMigration } from './db.js';
@@ -185,10 +186,82 @@ describe('Pasarela Logística Integrada (Ganadito Cargo & Express API)', { concu
     assert.strictEqual(cotizacion.total_flete, 440.48);
   });
 
+  test('1b. Privacidad (Ley 29733): cotizar exige sesión y mide un establo AJENO desde su punto en la rejilla', async () => {
+    const anonimo = await app.inject({
+      method: 'POST', url: '/api/v1/logistica/cotizar',
+      payload: { origen_establecimiento_id: establoOrigenId, destino_establecimiento_id: establoDestinoId, peso_toneladas: 1, tipo_unidad: 'CAMION_JAULA_SIMPLE' }
+    });
+    assert.strictEqual(anonimo.statusCode, 401, 'antes era anónima y permitía triangular');
+
+    // Otra organización (el cliente regular) cotiza hacia el ESTABLO del solicitante: la
+    // distancia debe ser la del punto aproximado, no la exacta.
+    const desdeAjeno = await app.inject({
+      method: 'POST', url: '/api/v1/logistica/cotizar',
+      headers: { authorization: `Bearer ${clienteRegularToken}` },
+      payload: { origen_establecimiento_id: establoOrigenId, destino_establecimiento_id: establoDestinoId, peso_toneladas: 1, tipo_unidad: 'CAMION_JAULA_SIMPLE' }
+    });
+    assert.strictEqual(desdeAjeno.statusCode, 200, desdeAjeno.body);
+    const esperada = await pool.query<{ exacta: number; aprox: number }>(
+      `SELECT ST_Distance(o.coordenadas, d.coordenadas) / 1000.0 AS exacta,
+              ST_Distance(ST_SnapToGrid(o.coordenadas::geometry, 0.01)::geography, d.coordenadas) / 1000.0 AS aprox
+       FROM establecimientos o, establecimientos d WHERE o.id = $1 AND d.id = $2`,
+      [establoOrigenId, establoDestinoId]
+    );
+    const { exacta, aprox } = esperada.rows[0]!;
+    assert.ok(Math.abs(Number(exacta) - Number(aprox)) > 0.05, 'precondición: el fixture no está sobre la rejilla');
+    assert.strictEqual(desdeAjeno.json().distancia_km, Number(Number(aprox).toFixed(2)));
+
+    // El dueño sí obtiene la distancia exacta.
+    const propio = await app.inject({
+      method: 'POST', url: '/api/v1/logistica/cotizar',
+      headers: { authorization: `Bearer ${solicitanteToken}` },
+      payload: { origen_establecimiento_id: establoOrigenId, destino_establecimiento_id: establoDestinoId, peso_toneladas: 1, tipo_unidad: 'CAMION_JAULA_SIMPLE' }
+    });
+    assert.strictEqual(propio.json().distancia_km, Number(Number(exacta).toFixed(2)));
+  });
+
+  test('1c. Fletes: no se crean entre establecimientos ajenos ni con una orden ajena; las lecturas son solo para participantes', async () => {
+    const ajenos = await app.inject({
+      method: 'POST', url: '/api/v1/logistica/solicitudes',
+      headers: { authorization: `Bearer ${clienteRegularToken}` },
+      payload: { origen_establecimiento_id: establoOrigenId, destino_establecimiento_id: establoDestinoId, tipo_carga: 'GANADO_EN_PIE', tipo_unidad: 'CAMION_JAULA_SIMPLE', peso_toneladas: 5 }
+    });
+    assert.strictEqual(ajenos.statusCode, 403, ajenos.body);
+
+    const ordenAjena = await app.inject({
+      method: 'POST', url: '/api/v1/logistica/solicitudes',
+      headers: { authorization: `Bearer ${solicitanteToken}` },
+      payload: { orden_compra_id: crypto.randomUUID(), origen_establecimiento_id: establoOrigenId, destino_establecimiento_id: establoDestinoId, tipo_carga: 'GANADO_EN_PIE', tipo_unidad: 'CAMION_JAULA_SIMPLE', peso_toneladas: 5 }
+    });
+    assert.strictEqual(ordenAjena.statusCode, 404);
+    assert.match(ordenAjena.json().message, /no encontrada/);
+
+    const propia = await app.inject({
+      method: 'POST', url: '/api/v1/logistica/solicitudes',
+      headers: { authorization: `Bearer ${solicitanteToken}` },
+      payload: { origen_establecimiento_id: establoOrigenId, destino_establecimiento_id: establoDestinoId, tipo_carga: 'GANADO_EN_PIE', tipo_unidad: 'CAMION_JAULA_SIMPLE', peso_toneladas: 5 }
+    });
+    assert.strictEqual(propia.statusCode, 201, propia.body);
+    const id = propia.json().id;
+
+    // Un comprador sin relación no la ve (ni en el listado ni por id).
+    const lista = await app.inject({ method: 'GET', url: '/api/v1/logistica/solicitudes', headers: { authorization: `Bearer ${clienteRegularToken}` } });
+    assert.strictEqual(lista.statusCode, 200);
+    assert.ok(!lista.json().solicitudes.some((f: any) => f.id === id));
+    const detalle = await app.inject({ method: 'GET', url: `/api/v1/logistica/solicitudes/${id}`, headers: { authorization: `Bearer ${clienteRegularToken}` } });
+    assert.strictEqual(detalle.statusCode, 404);
+
+    // Un TRANSPORTISTA en su contexto activo sí la ve mientras busca carga.
+    const paraTransportista = await app.inject({ method: 'GET', url: '/api/v1/logistica/solicitudes', headers: { authorization: `Bearer ${transportista1Token}` } });
+    assert.ok(paraTransportista.json().solicitudes.some((f: any) => f.id === id));
+    await pool.query('DELETE FROM fletes_solicitudes WHERE id = $1', [id]);
+  });
+
   test('2. POST /api/v1/logistica/cotizar: cálculo geodésico exacto en PostGIS y cotización con referral fee', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/logistica/cotizar',
+      headers: { authorization: `Bearer ${solicitanteToken}` },
       payload: {
         origen_establecimiento_id: establoOrigenId,
         destino_establecimiento_id: establoDestinoId,

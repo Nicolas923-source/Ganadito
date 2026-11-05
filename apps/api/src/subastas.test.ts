@@ -85,6 +85,19 @@ describe('Motor Transaccional de Subastas en Vivo (PostgreSQL, Concurrencia y An
     await closePool();
   });
 
+  test('0. Un lote en BORRADOR no es público: snapshot 404 para anónimos y otras organizaciones', async () => {
+    const r = await app.inject({
+      method: 'POST', url: '/api/v1/subastas', headers: { authorization: `Bearer ${vendedorToken}` },
+      payload: { codigo_lote: `BORR-${Date.now()}`, precio_base: 1000, incremento_minimo: 50, estado: 'BORRADOR',
+        fecha_cierre: new Date(Date.now() + 3600000).toISOString() }
+    });
+    assert.strictEqual(r.statusCode, 201, r.body);
+    const url = `/api/v1/subastas/${r.json().id}/snapshot`;
+    assert.strictEqual((await app.inject({ method: 'GET', url })).statusCode, 404);
+    assert.strictEqual((await app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${comprador1Token}` } })).statusCode, 404);
+    assert.strictEqual((await app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${vendedorToken}` } })).statusCode, 200);
+  });
+
   test('1. Creación de lote y consulta de snapshot (POST /api/v1/subastas & GET /api/v1/subastas/:id/snapshot)', async () => {
     const fechaCierre = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // +30 minutos
 
@@ -162,7 +175,17 @@ describe('Motor Transaccional de Subastas en Vivo (PostgreSQL, Concurrencia y An
     assert.strictEqual(snap.precio_actual, 5100);
     assert.strictEqual(snap.proxima_puja_minima, 5200);
     assert.strictEqual(snap.secuencia_maxima, 1);
-    assert.strictEqual(snap.postor_ganador_id, comprador1UserId);
+    // Privacidad: el líder no se publica a anónimos ni a otros; solo a sí mismo.
+    assert.strictEqual(snap.postor_ganador_id, null);
+    assert.strictEqual(snap.postor_ganador_nombre, null);
+    const paraLider = (await app.inject({
+      method: 'GET', url: `/api/v1/subastas/${loteActivoId}/snapshot`, headers: { authorization: `Bearer ${comprador1Token}` }
+    })).json();
+    assert.strictEqual(paraLider.postor_ganador_id, comprador1UserId);
+    const paraOtro = (await app.inject({
+      method: 'GET', url: `/api/v1/subastas/${loteActivoId}/snapshot`, headers: { authorization: `Bearer ${comprador2Token}` }
+    })).json();
+    assert.strictEqual(paraOtro.postor_ganador_id, null);
 
     // Validar registro en outbox_events
     const outboxRes = await pool.query<{ event_type: string; status: string }>(

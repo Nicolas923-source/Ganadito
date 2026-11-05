@@ -220,6 +220,7 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
   // Registrar Cliente Resiliente del Servicio Satélite de Inteligencia Artificial
   app.register(aiRoutes, {
     prefix: '/api/v1/ia',
+    pool,
     aiClient: options.aiClient,
     aiServiceUrl: options.aiServiceUrl
   });

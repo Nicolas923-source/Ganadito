@@ -111,10 +111,13 @@ describe('N05: privacidad de ubicación en mapa y vista pública del pasaporte',
         calidad: 'EXTRA',
         unidad_medida: 'KG_VIVO',
         precio_unitario: 9.1,
-        vigencia_hasta: new Date(Date.now() + 86400000).toISOString()
+        vigencia_hasta: new Date(Date.now() + 86400000).toISOString(),
+        // El cliente intenta autodeclararse "verificado": debe ignorarse.
+        verificado: true
       }
     });
     assert.strictEqual(pub.statusCode, 201, pub.body);
+    assert.strictEqual(pub.json().verificado, false, 'el cliente no decide la verificación');
     const { id: cotizacionId, categoria } = pub.json();
 
     async function leer(headers: Record<string, string> = {}) {

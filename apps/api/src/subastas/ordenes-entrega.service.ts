@@ -273,7 +273,7 @@ export class OrdenesEntregaService {
         monto_bruto: montoBruto,
         comision_retenida: comisionRetenida,
         monto_neto_pagar: montoNetoPagar,
-        cuenta_bancaria_cci: cuentaCCI,
+        // La CCI del vendedor no viaja en el evento: se consulta solo en la dispersión.
         estado: 'LIQUIDADO',
         observaciones: input?.observaciones ?? null,
         timestamp: new Date().toISOString()
@@ -295,10 +295,10 @@ export class OrdenesEntregaService {
           monto_bruto: montoBruto,
           comision_retenida: comisionRetenida,
           monto_neto_pagar: montoNetoPagar,
-          cuenta_bancaria_cci: cuentaCCI,
           estado: 'PENDIENTE_DISPERSION'
         },
-        mensaje: 'Recepción confirmada exitosamente. Fondos liquidados en custodia para dispersión al vendedor.',
+        // Sin promesa de custodia (AGENTS §2): no hay escrow documentado.
+        mensaje: 'Recepción confirmada. La liquidación al vendedor queda pendiente de dispersión.',
         liquidado_at: liquidacion.created_at
       };
     } catch (err) {

@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Bovino } from '@ganadito/contracts';
-  let { bovino }: { bovino: Bovino } = $props();
+  // Solo campos públicos: sirve para la vista COMPLETA y la PUBLICA (sin organización).
+  let { bovino }: { bovino: Pick<Bovino, 'codigo_arete' | 'estado' | 'raza' | 'sexo' | 'fecha_nacimiento'> } = $props();
 </script>
 <div class="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-5">
   <div><p class="text-sm text-slate-400">Código de arete registrado</p><h2 class="text-2xl font-mono font-bold text-white mt-1 break-all">{bovino.codigo_arete}</h2></div>
