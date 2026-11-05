@@ -45,4 +45,11 @@ git diff --name-only origin/main...HEAD
 
 Comparar cada ruta con esta matriz y con el alcance del PR, incluidas las excepciones. CI valida código y navegador; **no bloquea automáticamente edición por propietario**. El login de quien abre un PR o una etiqueta no demuestra quién editó cada archivo. Una comprobación automática futura debe acordar identidad, reservas y excepciones antes de convertirse en un check obligatorio.
 
-Nadie aprueba su propia entrega. El otro programador revisa el código final; un asistente o un check verde no sustituye esa revisión.
+Nadie aprueba su propia entrega. Desde el 2026-11-04, por decisión de Nicolás, que es el programador principal y tiene la decisión final:
+
+- `main` no exige aprobación en GitHub;
+- **Claude revisa cada PR por encargo de Nicolás** antes de unirlo con squash: revisión crítica con evidencia, más la CI obligatoria en verde;
+- lo que falte corregir va en un **PR nuevo**;
+- Víctor, el programador secundario, puede revisar después de la unión y abrir PR de corrección.
+
+Un check verde por sí solo no sustituye la revisión.

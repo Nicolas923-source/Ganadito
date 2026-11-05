@@ -38,7 +38,7 @@ Cuando existan instrucciones o criterios en conflicto, la prioridad estricta es:
 
 ## 4. Reparto de edición y aceptación
 
-La matriz vigente está en [docs/OWNERSHIP.md](docs/OWNERSHIP.md). Víctor edita web, pruebas de navegador, despliegue, documentación salvo `docs/api`, manifiestos npm/lockfile, workflows y configuración raíz. Nicolás edita API y sus pruebas, contratos, documentación API, SQL/seeds, Docker, paquetes compartidos/config y servicios IA. Las excepciones de manifiestos npm tienen prioridad sobre la propiedad de las carpetas.
+Nicolás es el programador principal y tiene la decisión final; Víctor es el programador secundario. Cada PR lo revisa Claude por encargo de Nicolás antes de unirlo (ver [docs/OWNERSHIP.md](docs/OWNERSHIP.md)). La matriz vigente está en [docs/OWNERSHIP.md](docs/OWNERSHIP.md). Víctor edita web, pruebas de navegador, despliegue, documentación salvo `docs/api`, manifiestos npm/lockfile, workflows y configuración raíz. Nicolás edita API y sus pruebas, contratos, documentación API, SQL/seeds, Docker, paquetes compartidos/config y servicios IA. Las excepciones de manifiestos npm tienen prioridad sobre la propiedad de las carpetas.
 
 No editar rutas del compañero para desbloquear una pantalla. Registrar la solicitud en la entrega; una transferencia requiere tarea, rutas, editor temporal y condición de fin antes de editar. No cambiar contratos ni migraciones por cuenta propia.
 
