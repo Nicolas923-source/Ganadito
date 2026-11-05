@@ -65,6 +65,8 @@ describe('Catálogo de lotes (GET /subastas) y detalle del lote', { concurrency:
     assert.strictEqual((await crearLote(vendedor, { descripcion: 'x'.repeat(501) }, 3)).statusCode, 400);
     // El establecimiento de origen debe ser propio.
     assert.strictEqual((await crearLote(otroVendedor, { establecimiento_id: establoId }, 4)).statusCode, 403);
+    assert.strictEqual((await crearLote(vendedor, { establecimiento_id: { x: 1 } }, 6)).statusCode, 400);
+    assert.strictEqual((await crearLote(vendedor, { establecimiento_id: 'no-uuid' }, 7)).statusCode, 400);
   });
 
   test('público: solo ACTIVO por defecto, nunca BORRADOR, y origen aproximado para terceros', async () => {
@@ -120,5 +122,9 @@ describe('Catálogo de lotes (GET /subastas) y detalle del lote', { concurrency:
     assert.strictEqual(vistos.length, 3);
     assert.strictEqual((await app.inject({ method: 'GET', url: '/api/v1/subastas?cursor=xxx' })).statusCode, 400);
     assert.strictEqual((await app.inject({ method: 'GET', url: '/api/v1/subastas?limit=999' })).statusCode, 400);
+    const malo = (v: unknown) => Buffer.from(JSON.stringify(v)).toString('base64url');
+    for (const c of [malo(['2026-99-99T00:00:00Z', crypto.randomUUID()]), malo(['2026-11-05T00:00:00Z', '-'.repeat(36)])]) {
+      assert.strictEqual((await app.inject({ method: 'GET', url: `/api/v1/subastas?cursor=${c}` })).statusCode, 400, 'un cursor imposible da 400, no 500');
+    }
   });
 });

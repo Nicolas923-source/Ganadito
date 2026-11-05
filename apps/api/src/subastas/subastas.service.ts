@@ -30,6 +30,8 @@ function aCentimos(valor: unknown): number | null {
   return Math.abs(c - valor * 100) < 1e-6 ? c : null;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export class SubastaError extends Error {
   constructor(message: string, public statusCode: number = 400, public code?: CodigoErrorSubasta) {
     super(message);
@@ -58,8 +60,6 @@ export class SubastasService {
       anti_sniping_extension = 120,
       estado = 'ACTIVO'
     } = input;
-    const detalle = await this.validarDetalle(vendedorOrgId, input);
-
     if (typeof precio_base !== 'number' || precio_base <= 0) {
       throw new SubastaError('precio_base debe ser un número positivo mayor a 0.', 400);
     }
@@ -86,6 +86,7 @@ export class SubastasService {
     if (aCentimos(precio_base) === null || aCentimos(incremento_minimo) === null) {
       throw new SubastaError('precio_base e incremento_minimo admiten como máximo 2 decimales.', 400);
     }
+    const detalle = await this.validarDetalle(vendedorOrgId, input);
 
     const fechaInicioDate = fecha_inicio ? new Date(fecha_inicio) : new Date();
     const fechaCierreDate = new Date(fecha_cierre);
@@ -176,10 +177,6 @@ export class SubastasService {
     return res.rows[0]!;
   }
 
-  /**
-   * Consulta el Snapshot oficial en tiempo real del lote sin bloqueos transaccionales.
-   * Calcula el tiempo restante oficial del reloj del servidor de base de datos.
-   */
   private async validarDetalle(vendedorOrgId: string, input: CrearLoteSubastaInput): Promise<DetalleLote> {
     const texto = (v: unknown, campo: string, max: number): string | null => {
       if (v === undefined || v === null || v === '') return null;
@@ -193,7 +190,10 @@ export class SubastasService {
       throw new SubastaError('cantidad_animales debe ser un entero entre 1 y 10 000.', 400);
     }
     let establecimiento: string | null = null;
-    if (input.establecimiento_id) {
+    if (input.establecimiento_id !== undefined && input.establecimiento_id !== null && input.establecimiento_id !== '') {
+      if (typeof input.establecimiento_id !== 'string' || !UUID_RE.test(input.establecimiento_id)) {
+        throw new SubastaError('establecimiento_id debe ser un UUID.', 400);
+      }
       const est = await this.pool.query(
         'SELECT 1 FROM establecimientos WHERE id::text = $1 AND organizacion_id = $2',
         [input.establecimiento_id, vendedorOrgId]
@@ -253,7 +253,7 @@ export class SubastasService {
       } catch {
         throw new SubastaError('cursor inválido.', 400);
       }
-      if (typeof ts !== 'string' || !/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(ts) || typeof id !== 'string' || !/^[0-9a-f-]{36}$/i.test(id)) {
+      if (typeof ts !== 'string' || !/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(ts) || Number.isNaN(Date.parse(ts)) || typeof id !== 'string' || !UUID_RE.test(id)) {
         throw new SubastaError('cursor inválido.', 400);
       }
       values.push(ts, id);
@@ -298,6 +298,10 @@ export class SubastasService {
    * Lectura pública del lote. Privacidad: el postor que va ganando (id y nombre, dato
    * personal) solo se revela A ÉL MISMO; para los demás va null. Un lote en BORRADOR no
    * está publicado: solo lo ve su organización vendedora (404 para el resto).
+   */
+  /**
+   * Consulta el Snapshot oficial en tiempo real del lote sin bloqueos transaccionales.
+   * Calcula el tiempo restante oficial del reloj del servidor de base de datos.
    */
   async obtenerSnapshot(loteId: string, visor: { userId?: string; organizacionId?: string } = {}): Promise<LoteSnapshotResponse> {
     const res = await this.pool.query<{
