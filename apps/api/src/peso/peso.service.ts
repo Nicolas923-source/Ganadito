@@ -134,10 +134,45 @@ export function validarEntrada(body: unknown): CrearEstimacionPesoInput {
   return { vistas: b.vistas, ...(identificador ? { identificador_animal: identificador } : {}) };
 }
 
-/** Comprueba la respuesta del satélite antes de guardarla: nunca se persiste algo incoherente. */
-export function validarResultadoSatelite(r: unknown): ResultadoSatelite {
+const esObjeto = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+const esListaDeObjetos = (v: unknown) => Array.isArray(v) && v.every(esObjeto);
+
+function incertidumbreValida(v: unknown): boolean {
+  if (!esObjeto(v)) return false;
+  return (
+    esNumeroFinito(v.nivel_confianza) &&
+    esNumeroFinito(v.desviacion_log) &&
+    (v.desviacion_log as number) >= 0 &&
+    Array.isArray(v.contribuciones) &&
+    v.contribuciones.every((c) => esObjeto(c) && typeof c.fuente === 'string' && esNumeroFinito(c.contribucion))
+  );
+}
+
+function controlesValidos(v: unknown): boolean {
+  return Array.isArray(v) && v.every((c) => esObjeto(c) && typeof c.codigo === 'string' && typeof c.estado === 'string');
+}
+
+/** La muestra debe traer las medidas que la calibración necesita después. */
+function muestraValida(v: unknown): boolean {
+  return esObjeto(v) && esNumeroFinito(v.largo_corporal_cm) && esNumeroFinito(v.profundidad_pecho_cm);
+}
+
+/**
+ * Comprueba la respuesta COMPLETA del satélite antes de guardarla (no solo el núcleo
+ * numérico): incertidumbre, advertencias, calidad y muestra(s). Cualquier forma
+ * inesperada es un 502 del proveedor, nunca un 500 ni un INSERT incompleto.
+ */
+export function validarResultadoSatelite(r: unknown, numeroVistas = 1): ResultadoSatelite {
   const x = r as ResultadoSatelite | null;
+  const formaVistas =
+    numeroVistas === 1
+      ? !!x && muestraValida(x.muestra) && controlesValidos(x.calidad)
+      : !!x &&
+        esListaDeObjetos(x.vistas) &&
+        x.vistas!.length === numeroVistas &&
+        x.vistas!.every((v) => muestraValida(v.muestra) && controlesValidos(v.calidad));
   const ok =
+    formaVistas &&
     !!x &&
     typeof x.metodo === 'string' &&
     typeof x.version_parametros === 'string' &&
@@ -149,11 +184,11 @@ export function validarResultadoSatelite(r: unknown): ResultadoSatelite {
     x.rango_min_kg <= x.peso_estimado_kg &&
     x.peso_estimado_kg <= x.rango_max_kg &&
     x.es_vinculante === false &&
-    !!x.incertidumbre &&
-    esNumeroFinito(x.incertidumbre.nivel_confianza) &&
+    incertidumbreValida(x.incertidumbre) &&
     x.incertidumbre.nivel_confianza > 0 &&
     x.incertidumbre.nivel_confianza < 1 &&
-    Array.isArray(x.advertencias);
+    Array.isArray(x.advertencias) &&
+    x.advertencias.every((a) => typeof a === 'string');
   if (!ok) {
     throw new PesoError('El servicio de IA devolvió una respuesta inválida.', 502, 'IA_RESPUESTA_INVALIDA');
   }
@@ -173,7 +208,8 @@ function detalleSeguro(detalle: unknown): unknown {
 export class PesoService {
   constructor(private readonly pool: pg.Pool, private readonly ai: AiClientService) {}
 
-  private async verificarLoteEditable(loteId: string, organizacionId: string): Promise<void> {
+  /** 404 si no existe, 403 si es de otra organización; devuelve si aún admite estimaciones. */
+  private async verificarLoteDelVendedor(loteId: string, organizacionId: string): Promise<boolean> {
     const res = await this.pool.query<{ vendedor_id: string; editable: boolean }>(
       `SELECT l.vendedor_id, ${SQL_LOTE_EDITABLE} AS editable FROM lotes_subasta l WHERE l.id = $1`,
       [loteId]
@@ -183,13 +219,7 @@ export class PesoService {
     if (lote.vendedor_id !== organizacionId) {
       throw new PesoError('El lote no pertenece a la organización activa.', 403, 'LOTE_AJENO');
     }
-    if (!lote.editable) {
-      throw new PesoError(
-        'El lote ya inició su subasta o está cerrado: no admite nuevas estimaciones.',
-        409,
-        'LOTE_NO_EDITABLE'
-      );
-    }
+    return lote.editable;
   }
 
   private async buscarIdempotente(loteId: string, clave: string, huella: string): Promise<EstimacionPesoResponse | null> {
@@ -216,14 +246,23 @@ export class PesoService {
     if (idempotencyKey !== undefined && (idempotencyKey.length < 1 || idempotencyKey.length > MAX_IDEMPOTENCY_KEY)) {
       throw new PesoError('Idempotency-Key inválida.', 400, 'ENTRADA_INVALIDA');
     }
-    await this.verificarLoteEditable(loteId, organizacionId);
+    const editable = await this.verificarLoteDelVendedor(loteId, organizacionId);
 
     const huella = idempotencyKey
       ? crypto.createHash('sha256').update(JSON.stringify([loteId, userId, entrada])).digest('hex')
       : null;
+    // El reintento de una solicitud YA guardada se responde con lo persistido (200) aunque
+    // la subasta haya empezado después: la regla de "lote editable" aplica solo a altas nuevas.
     if (idempotencyKey && huella) {
       const previa = await this.buscarIdempotente(loteId, idempotencyKey, huella);
       if (previa) return { estimacion: previa, repetida: true };
+    }
+    if (!editable) {
+      throw new PesoError(
+        'El lote ya inició su subasta o está cerrado: no admite nuevas estimaciones.',
+        409,
+        'LOTE_NO_EDITABLE'
+      );
     }
 
     // La llamada al satélite va FUERA de toda transacción: no se retienen bloqueos
@@ -241,7 +280,7 @@ export class PesoService {
       }
       throw err;
     }
-    const r = validarResultadoSatelite(crudo);
+    const r = validarResultadoSatelite(crudo, entrada.vistas.length);
     const muestras = r.vistas ? r.vistas.map((v) => v.muestra) : [r.muestra];
     const calidad = r.vistas ? r.vistas.flatMap((v) => v.calidad) : (r.calidad ?? []);
 
@@ -352,14 +391,21 @@ export class PesoService {
     if (!balanza || balanza.length > 200) {
       throw new PesoError('balanza_descripcion es obligatoria (máx. 200 caracteres).', 400, 'ENTRADA_INVALIDA');
     }
-    // Conflicto de interés: nadie de la organización vendedora registra la balanza de
-    // sus propios animales (sesgaría la calibración), aunque tenga rol OPERADOR.
-    const duena = await this.pool.query<{ organizacion_id: string }>(
-      'SELECT organizacion_id FROM estimaciones_peso WHERE id = $1',
-      [estimacionId]
+    // Conflicto de interés: nadie vinculado a la organización vendedora registra la balanza
+    // de sus propios animales (sesgaría la calibración). Se comprueba por USUARIO: no basta
+    // con cambiar a un contexto OPERADOR de otra organización, ni con ser quien creó la
+    // estimación.
+    const duena = await this.pool.query<{ organizacion_id: string; conflicto: boolean }>(
+      `SELECT e.organizacion_id,
+              (e.organizacion_id = $2
+               OR e.creado_por_user_id = $3
+               OR EXISTS (SELECT 1 FROM user_organizaciones_roles uor
+                          WHERE uor.user_id = $3 AND uor.organizacion_id = e.organizacion_id)) AS conflicto
+       FROM estimaciones_peso e WHERE e.id = $1`,
+      [estimacionId, organizacionId, userId]
     );
     if (!duena.rows[0]) throw new PesoError('Estimación no encontrada.', 404, 'ESTIMACION_NO_ENCONTRADA');
-    if (duena.rows[0].organizacion_id === organizacionId) {
+    if (duena.rows[0].conflicto) {
       throw new PesoError('La organización vendedora no puede registrar el pesaje de su propio lote.', 403, 'CONFLICTO_DE_INTERES');
     }
     try {
@@ -372,6 +418,9 @@ export class PesoService {
                                         registrado_por_user_id, registrado_por_organizacion_id)
            SELECT e.id, $2, $3, $4, $5, $6 FROM estimaciones_peso e
            WHERE e.id = $1 AND e.organizacion_id <> $6
+             AND e.creado_por_user_id IS DISTINCT FROM $5
+             AND NOT EXISTS (SELECT 1 FROM user_organizaciones_roles uor
+                             WHERE uor.user_id = $5 AND uor.organizacion_id = e.organizacion_id)
            RETURNING *)
          SELECT n.id, n.estimacion_id, n.peso_real_kg, n.perimetro_cinta_cm, n.balanza_descripcion, n.created_at,
                 e.peso_estimado_kg, e.rango_min_kg, e.rango_max_kg
