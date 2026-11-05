@@ -78,33 +78,33 @@
   }
 </script>
 
-<section class="rounded-2xl bg-slate-900 border border-slate-700 p-5 space-y-4" aria-label="Enviar puja">
+<section class="rounded-2xl bg-superficie border border-linea p-5 space-y-4" aria-label="Enviar puja">
   <h2 class="text-lg font-bold">Enviar una puja</h2>
-  <p class="text-sm text-slate-300">Próxima puja mínima: <strong>S/ {proximaPujaMinima.toFixed(2)}</strong></p>
+  <p class="text-sm text-tinta-2">Próxima puja mínima: <strong>S/ {proximaPujaMinima.toFixed(2)}</strong></p>
   {#if $session.status !== 'authenticated'}
-    <p class="text-amber-200"><a href="/acceso" class="underline">Inicia sesión</a> para pujar.</p>
+    <p class="text-aviso"><a href="/acceso" class="underline">Inicia sesión</a> para pujar.</p>
   {:else if !$session.organizationId}
-    <p class="text-amber-200"><a href="/contexto" class="underline">Selecciona tu organización</a> para continuar.</p>
+    <p class="text-aviso"><a href="/contexto" class="underline">Selecciona tu organización</a> para continuar.</p>
   {/if}
-  {#if error}<p role="alert" class="text-rose-300">{error}</p>{/if}
-  {#if confirmation}<p role="status" class="text-emerald-300">{confirmation}</p>{/if}
+  {#if error}<p role="alert" class="text-alerta">{error}</p>{/if}
+  {#if confirmation}<p role="status" class="text-pasto">{confirmation}</p>{/if}
   {#if uncertain && pending}
-    <div class="rounded-xl border border-amber-600 p-3 text-sm text-amber-100 space-y-2">
+    <div class="rounded-xl border border-aviso-linea p-3 text-sm text-aviso space-y-2">
       <p>La respuesta no llegó completa. La puja podría haberse registrado. Reintenta la misma solicitud para consultar su resultado sin duplicarla.</p>
-      <button type="button" class="rounded-lg border border-amber-400 px-3 py-2 disabled:opacity-50" disabled={submitting || !hasSession} onclick={() => pending && sendBid(pending.amount, true)}>Reintentar la misma puja</button>
+      <button type="button" class="secondary rounded-lg px-3 py-2" disabled={submitting || !hasSession} onclick={() => pending && sendBid(pending.amount, true)}>Reintentar la misma puja</button>
     </div>
   {/if}
   <div class="grid grid-cols-3 gap-2">
     {#each [1, 2, 5] as factor}
-      <button type="button" class="rounded-xl bg-emerald-700 hover:bg-emerald-600 px-2 py-3 text-sm font-bold disabled:opacity-40" disabled={!canBid || submitting || uncertain} onclick={() => sendBid(precioActual + incrementoMinimo * factor)}>
+      <button type="button" class="rounded-xl bg-pasto hover:bg-pasto-osc px-2 py-3 text-sm font-bold disabled:opacity-40" disabled={!canBid || submitting || uncertain} onclick={() => sendBid(precioActual + incrementoMinimo * factor)}>
         S/ {(precioActual + incrementoMinimo * factor).toFixed(2)}
       </button>
     {/each}
   </div>
   <form class="space-y-3" onsubmit={(event) => { event.preventDefault(); if (amount !== undefined) void sendBid(amount); }}>
     <label for="bid-amount" class="block text-sm">Importe de tu puja (S/)</label>
-    <input id="bid-amount" name="monto" class="w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2" type="number" min={proximaPujaMinima} step="0.01" required bind:value={amount} disabled={!canBid || submitting || uncertain} />
-    <button type="submit" class="w-full rounded-lg bg-emerald-600 px-4 py-3 font-bold disabled:opacity-40" disabled={!canBid || submitting || uncertain}>{submitting ? 'Esperando confirmación…' : 'Confirmar puja'}</button>
+    <input id="bid-amount" name="monto" class="w-full rounded-lg border border-linea bg-superficie px-3 py-2" type="number" min={proximaPujaMinima} step="0.01" required bind:value={amount} disabled={!canBid || submitting || uncertain} />
+    <button type="submit" class="w-full rounded-lg bg-pasto px-4 py-3 font-bold disabled:opacity-40" disabled={!canBid || submitting || uncertain}>{submitting ? 'Esperando confirmación…' : 'Confirmar puja'}</button>
   </form>
-  {#if !esAbierta}<p class="text-sm text-slate-400">El servidor no tiene habilitadas las pujas para este lote.</p>{/if}
+  {#if !esAbierta}<p class="text-sm text-apagado">El servidor no tiene habilitadas las pujas para este lote.</p>{/if}
 </section>

@@ -43,12 +43,12 @@
       // never a precise center pin; its size remains geographic when zoom changes.
       const marcador = establecimiento.ubicacion_aproximada
         ? leaflet.circle([establecimiento.latitud, establecimiento.longitud], {
-            radius: 800, className: 'ubicacion-aproximada', color: seleccionado ? '#fcd34d' : '#f59e0b',
-            weight: seleccionado ? 3 : 2, dashArray: '5 5', fillColor: '#f59e0b', fillOpacity: 0.15
+            radius: 800, className: 'ubicacion-aproximada', color: seleccionado ? '#8a5a12' : '#b7791f',
+            weight: seleccionado ? 3 : 2, dashArray: '5 5', fillColor: '#b7791f', fillOpacity: 0.15
           })
         : leaflet.circleMarker([establecimiento.latitud, establecimiento.longitud], {
             radius: seleccionado ? 12 : 8, className: 'ubicacion-exacta', color: '#ffffff',
-            weight: 2, fillColor: '#059669', fillOpacity: 0.9
+            weight: 2, fillColor: '#1e5a35', fillOpacity: 0.9
           });
       // Leaflet accepts DOM nodes. textContent keeps API-controlled names and addresses inert.
       const contenido = document.createElement('div');
@@ -105,9 +105,9 @@
   }
 </script>
 
-<div class="relative w-full h-full min-h-[360px] rounded-2xl overflow-hidden border border-slate-800 bg-slate-950">
+<div class="relative w-full h-full min-h-[360px] rounded-2xl overflow-hidden border border-linea bg-superficie">
   <div bind:this={mapContainer} class="w-full h-full" aria-label="Visor de establecimientos"></div>
-  {#if establecimientos.some(e => e.ubicacion_aproximada)}<p class="absolute bottom-6 left-2 right-2 z-[500] rounded-lg bg-slate-950/90 p-2 text-xs text-amber-200 pointer-events-none">Ubicación aproximada: las áreas son orientativas y no indican el punto exacto.</p>{/if}
-  {#if cargando}<p role="status" class="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/80 p-6 text-slate-300">Cargando mapa…</p>{/if}
-  {#if errorMapa}<p role="alert" class="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/90 p-6 text-slate-300">{errorMapa}</p>{/if}
+  {#if establecimientos.some(e => e.ubicacion_aproximada)}<p class="absolute bottom-6 left-2 right-2 z-[500] rounded-lg bg-superficie/90 p-2 text-xs text-aviso pointer-events-none">Ubicación aproximada: las áreas son orientativas y no indican el punto exacto.</p>{/if}
+  {#if cargando}<p role="status" class="absolute inset-0 z-20 flex items-center justify-center bg-superficie/80 p-6 text-tinta-2">Cargando mapa…</p>{/if}
+  {#if errorMapa}<p role="alert" class="absolute inset-0 z-20 flex items-center justify-center bg-superficie/90 p-6 text-tinta-2">{errorMapa}</p>{/if}
 </div>
