@@ -70,7 +70,7 @@ test('registro y publicación web, puja persistida, cierre automático y orden a
   expect(publication.status()).toBe(201);
   const uiLot = await publication.json();
   expect(uiLot.vendedor_id).toBe(sellerSession.active_context.organizacion_id);
-  await expect(page.getByRole('status')).toContainText(`El servidor confirmó el lote ${uiCode}`);
+  await expect(page.getByRole('status').filter({ hasText: `El servidor confirmó el lote ${uiCode}` })).toBeVisible();
   await page.getByRole('link', { name: 'Abrir lote publicado' }).click();
   await expect(page.getByRole('region', { name: 'Estado oficial del lote' })).toContainText(uiCode);
   const uiSnapshot = await request.get(`${api}/subastas/${uiLot.id}/snapshot`);
