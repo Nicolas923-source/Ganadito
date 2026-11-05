@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
+import { limitar, REGLAS } from '../rate-limit.js';
 import type pg from 'pg';
 import { createAuthMiddleware } from '../auth/auth.middleware.js';
 import { requireRole } from '../auth/authorize.js';
@@ -54,7 +55,7 @@ export const pesoRoutes: FastifyPluginAsync<PesoRoutesOptions> = async (fastify,
   fastify.post<{ Params: { id: string }; Body: unknown }>(
     '/subastas/:id/estimaciones-peso',
     // onRequest (no preHandler): sesión y rol se validan ANTES de leer y parsear hasta 26 MB.
-    { bodyLimit: LIMITE_CUERPO_ESTIMACION_BYTES, onRequest: [authenticate, requireRole('VENDEDOR')] },
+    { bodyLimit: LIMITE_CUERPO_ESTIMACION_BYTES, onRequest: [authenticate, requireRole('VENDEDOR'), limitar(fastify, REGLAS.pesoUsuario)] },
     async (request, reply) => {
       if (!exigirUuid(request.params.id, reply)) return reply;
       const clave = request.headers['idempotency-key'];

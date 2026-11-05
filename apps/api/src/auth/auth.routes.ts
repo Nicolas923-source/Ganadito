@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
+import { limitar, REGLAS } from '../rate-limit.js';
 import type pg from 'pg';
 import { AuthService, AuthError } from './auth.service.js';
 import { createAuthMiddleware } from './auth.middleware.js';
@@ -17,7 +18,7 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (fastify,
    * POST /register
    * Crea un usuario y su organización inicial.
    */
-  fastify.post<{ Body: RegisterUserBody }>('/register', async (request, reply) => {
+  fastify.post<{ Body: RegisterUserBody }>('/register', { onRequest: [limitar(fastify, REGLAS.registroIp)] }, async (request, reply) => {
     const { email, password, nombre, telefono, organizacion_nombre, rol_inicial } = request.body || {};
 
     if (!email || !password || !nombre) {
@@ -84,7 +85,8 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (fastify,
    * POST /login
    * Valida credenciales de acceso y emite un token JWT con contexto organizacional activo.
    */
-  fastify.post<{ Body: LoginBody }>('/login', async (request, reply) => {
+  // preHandler: el límite por email necesita el cuerpo ya parseado.
+  fastify.post<{ Body: LoginBody }>('/login', { preHandler: [limitar(fastify, REGLAS.loginIp, REGLAS.loginEmail)] }, async (request, reply) => {
     const { email, password } = request.body || {};
 
     if (!email || !password) {
