@@ -71,7 +71,7 @@ describe('Adaptadores de Integración Tributaria (SEE-SUNAT) y Financiera (CAVAL
       `INSERT INTO lotes_subasta (
          codigo_lote, vendedor_id, precio_base, precio_actual,
          incremento_minimo, estado, fecha_inicio, fecha_cierre
-       ) VALUES ($1, $2, 8000, 8500, 100, 'FINALIZADA', NOW() - INTERVAL '2 hours', NOW() - INTERVAL '1 hour')
+       ) VALUES ($1, $2, 8000, 8500, 100, 'ADJUDICADO', NOW() - INTERVAL '2 hours', NOW() - INTERVAL '1 hour')
        RETURNING id;`,
       [`LOTE-LCE-1-${Date.now()}`, vendedorOrgId]
     );
@@ -90,7 +90,7 @@ describe('Adaptadores de Integración Tributaria (SEE-SUNAT) y Financiera (CAVAL
       `INSERT INTO lotes_subasta (
          codigo_lote, vendedor_id, precio_base, precio_actual,
          incremento_minimo, estado, fecha_inicio, fecha_cierre
-       ) VALUES ($1, $2, 12000, 12500, 100, 'FINALIZADA', NOW() - INTERVAL '2 hours', NOW() - INTERVAL '1 hour')
+       ) VALUES ($1, $2, 12000, 12500, 100, 'ADJUDICADO', NOW() - INTERVAL '2 hours', NOW() - INTERVAL '1 hour')
        RETURNING id;`,
       [`LOTE-LCE-2-${Date.now()}`, vendedorOrgId]
     );
