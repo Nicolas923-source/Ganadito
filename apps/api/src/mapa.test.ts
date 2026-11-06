@@ -29,6 +29,23 @@ describe('Módulo de Mapa Geoespacial (PostGIS) y Pizarra Spot', () => {
   // Piura (Norte del Perú) ~850 km de Lima Centro
   const PIURA_CAMAL = { lat: -5.19449, lon: -80.63282 };
 
+  // La base de pruebas local puede conservar establecimientos de otros archivos: se recorren
+  // todas las páginas con offset para no depender de que los propios quepan en la primera.
+  async function idsCercanos(radioKm: number): Promise<string[]> {
+    const ids: string[] = [];
+    for (let offset = 0; offset < 5000; offset += 100) {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/v1/establecimientos/cercanos?lat=${LIMA_CENTRO.lat}&lon=${LIMA_CENTRO.lon}&radio_km=${radioKm}&limit=100&offset=${offset}`
+      });
+      assert.strictEqual(res.statusCode, 200);
+      const pagina = res.json().establecimientos as Array<{ id: string }>;
+      ids.push(...pagina.map((e) => e.id));
+      if (pagina.length < 100) break;
+    }
+    return ids;
+  }
+
   before(async () => {
     await runInitialMigration();
     await app.ready();
@@ -156,7 +173,7 @@ describe('Módulo de Mapa Geoespacial (PostGIS) y Pizarra Spot', () => {
 
     assert.strictEqual(radio5Res.statusCode, 200);
     const radio5Body = radio5Res.json();
-    const idsRadio5 = radio5Body.establecimientos.map((e: any) => e.id);
+    const idsRadio5 = await idsCercanos(5);
     assert.ok(!idsRadio5.includes(establoCallaoId), 'Establo Callao (10.6 km) debe quedar fuera de radio 5 km');
     assert.ok(!idsRadio5.includes(establoLimaId), 'Establo Lurín (32 km) debe quedar fuera de radio 5 km');
     assert.ok(!idsRadio5.includes(establoPiuraId), 'Piura (850 km) debe quedar fuera');
@@ -169,7 +186,7 @@ describe('Módulo de Mapa Geoespacial (PostGIS) y Pizarra Spot', () => {
 
     assert.strictEqual(radio15Res.statusCode, 200);
     const radio15Body = radio15Res.json();
-    const idsRadio15 = radio15Body.establecimientos.map((e: any) => e.id);
+    const idsRadio15 = await idsCercanos(15);
     assert.ok(idsRadio15.includes(establoCallaoId), 'Establo Callao debe ser incluido en radio de 15 km');
     assert.ok(!idsRadio15.includes(establoLimaId), 'Establo Lurín (32 km) debe quedar fuera en radio de 15 km');
     assert.ok(!idsRadio15.includes(establoPiuraId), 'Piura debe quedar fuera');
@@ -182,7 +199,7 @@ describe('Módulo de Mapa Geoespacial (PostGIS) y Pizarra Spot', () => {
 
     assert.strictEqual(radio50Res.statusCode, 200);
     const radio50Body = radio50Res.json();
-    const idsRadio50 = radio50Body.establecimientos.map((e: any) => e.id);
+    const idsRadio50 = await idsCercanos(50);
     assert.ok(idsRadio50.includes(establoCallaoId));
     assert.ok(idsRadio50.includes(establoLimaId));
     assert.ok(!idsRadio50.includes(establoPiuraId), 'Piura (850 km) debe quedar fuera en radio 50 km');
@@ -222,12 +239,16 @@ describe('Módulo de Mapa Geoespacial (PostGIS) y Pizarra Spot', () => {
     );
 
     let piura = body.establecimientos.find((e: any) => e.id === establoPiuraId);
-    if (!piura) {
+    // La base de pruebas puede conservar establecimientos de otros archivos más cerca de Lima:
+    // se pagina con offset en vez de suponer que Piura cabe en la primera página.
+    for (let offset = 0; !piura && offset < 5000; offset += 100) {
       const piuraLookup = await app.inject({
         method: 'GET',
-        url: `/api/v1/establecimientos/cercanos?lat=${LIMA_CENTRO.lat}&lon=${LIMA_CENTRO.lon}&radio_km=1000&tipo=CAMAL&limit=50`
+        url: `/api/v1/establecimientos/cercanos?lat=${LIMA_CENTRO.lat}&lon=${LIMA_CENTRO.lon}&radio_km=1000&tipo=CAMAL&limit=100&offset=${offset}`
       });
-      piura = piuraLookup.json().establecimientos.find((e: any) => e.id === establoPiuraId);
+      const pagina = piuraLookup.json().establecimientos as any[];
+      piura = pagina.find((e: any) => e.id === establoPiuraId);
+      if (pagina.length < 100) break;
     }
     assert.ok(piura);
     // Piura está a más de 800 km y menos de 950 km

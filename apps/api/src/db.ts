@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 const { Pool } = pg;
 
 let poolInstance: pg.Pool | null = null;
+let migrationPoolInstance: pg.Pool | null = null;
 
 export interface DatabaseConfig {
   connectionString?: string;
@@ -26,30 +27,62 @@ export interface DatabaseConfig {
 export function getDatabaseConfig(): DatabaseConfig {
   const connectionString = process.env.DATABASE_URL;
 
-  if (connectionString) {
+  if (process.env.NODE_ENV === 'production') {
+    if (!connectionString) {
+      throw new Error('En producción se requiere DATABASE_URL; no se permiten credenciales locales de respaldo.');
+    }
+    const parsed = parseSecureDatabaseUrl(connectionString, 'DATABASE_URL');
+    if (!['require', 'verify-ca', 'verify-full'].includes(parsed.searchParams.get('sslmode') ?? '')) {
+      throw new Error('En producción DATABASE_URL debe exigir TLS mediante sslmode=require o superior.');
+    }
     return {
       connectionString,
-      max: Number(process.env.DATABASE_POOL_MAX ?? 10),
+      max: resolvePoolMax(),
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 5000
     };
   }
 
-  // En producción no hay credenciales por defecto: con valores conocidos se conectaría a
-  // una base mal configurada en vez de fallar en el arranque.
-  if (process.env.NODE_ENV === 'production' && !process.env.DATABASE_PASSWORD) {
-    throw new Error('En producción se requiere DATABASE_URL o DATABASE_PASSWORD.');
+  if (connectionString) {
+    return {
+      connectionString,
+      max: resolvePoolMax(),
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 5000
+    };
   }
+
   return {
     host: process.env.DATABASE_HOST ?? 'localhost',
     port: Number(process.env.DATABASE_PORT ?? 5432),
     database: process.env.DATABASE_NAME ?? 'ganadito_dev',
     user: process.env.DATABASE_USER ?? 'postgres',
     password: process.env.DATABASE_PASSWORD ?? 'postgres_local_password',
-    max: Number(process.env.DATABASE_POOL_MAX ?? 10),
+    max: resolvePoolMax(),
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000
   };
+}
+
+function parseSecureDatabaseUrl(connectionString: string, variable: string): URL {
+  let parsed: URL;
+  try {
+    parsed = new URL(connectionString);
+  } catch {
+    throw new Error(`${variable} no es una URL PostgreSQL válida.`);
+  }
+  if (!['postgres:', 'postgresql:'].includes(parsed.protocol) || !parsed.hostname || !parsed.pathname.slice(1)) {
+    throw new Error(`${variable} debe apuntar a una base PostgreSQL válida.`);
+  }
+  return parsed;
+}
+
+function resolvePoolMax(): number {
+  const max = Number(process.env.DATABASE_POOL_MAX ?? 10);
+  if (!Number.isInteger(max) || max < 1 || max > 50) {
+    throw new Error('DATABASE_POOL_MAX debe ser un entero entre 1 y 50.');
+  }
+  return max;
 }
 
 /**
@@ -70,13 +103,47 @@ export function getPool(configOverride?: DatabaseConfig): pg.Pool {
 }
 
 /**
- * Cierra ordenadamente el pool de conexiones (útil en tests o apagado graceful).
+ * Pool exclusivo de migraciones. En producción no se reutiliza el usuario de runtime.
  */
-export async function closePool(): Promise<void> {
-  if (poolInstance) {
-    await poolInstance.end();
-    poolInstance = null;
+export function getMigrationPool(): pg.Pool {
+  if (process.env.NODE_ENV !== 'production') return getPool();
+  const connectionString = process.env.DATABASE_MIGRATION_URL;
+  if (!connectionString) {
+    throw new Error('En producción se requiere DATABASE_MIGRATION_URL para ejecutar migraciones.');
   }
+  const parsed = parseSecureDatabaseUrl(connectionString, 'DATABASE_MIGRATION_URL');
+  if (!['require', 'verify-ca', 'verify-full'].includes(parsed.searchParams.get('sslmode') ?? '')) {
+    throw new Error('En producción DATABASE_MIGRATION_URL debe exigir TLS mediante sslmode=require o superior.');
+  }
+  if (!migrationPoolInstance) {
+    migrationPoolInstance = new Pool({
+      connectionString,
+      max: 2,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000
+    });
+    migrationPoolInstance.on('error', (err: Error) => {
+      console.error('Error imprevisto en el pool de migraciones PostgreSQL:', err.message);
+    });
+  }
+  return migrationPoolInstance;
+}
+
+export async function closeMigrationPool(): Promise<void> {
+  if (migrationPoolInstance) {
+    await migrationPoolInstance.end();
+    migrationPoolInstance = null;
+  }
+}
+
+/** Cierra ordenadamente pools de runtime y migración (útil en tests y apagado). */
+export async function closePool(): Promise<void> {
+  await Promise.all([closeMigrationPool(), (async () => {
+    if (poolInstance) {
+      await poolInstance.end();
+      poolInstance = null;
+    }
+  })()]);
 }
 
 const MIGRATIONS_LOCK_KEY = 461_700_001; // clave fija de pg_advisory_lock para migraciones
@@ -116,7 +183,7 @@ export async function runMigrations(migrationsDir?: string): Promise<MigrationRe
   const files = fs.readdirSync(dir).filter((file) => file.endsWith('.sql')).sort();
   const result: MigrationResult = { applied: [], skipped: [] };
 
-  const client = await getPool().connect();
+  const client = await getMigrationPool().connect();
   try {
     await client.query('SELECT pg_advisory_lock($1)', [MIGRATIONS_LOCK_KEY]);
     await client.query(`
