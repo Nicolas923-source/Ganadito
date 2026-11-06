@@ -27,7 +27,7 @@ describe('Integridad: céntimos, topes, ids, autocalce y guardias', { concurrenc
       process.env.NODE_ENV = 'production';
       delete process.env.DATABASE_URL; delete process.env.DATABASE_PASSWORD;
       delete process.env.REDIS_URL; delete process.env.REDIS_PASSWORD;
-      assert.throws(() => getDatabaseConfig(), /DATABASE_URL o DATABASE_PASSWORD/);
+      assert.throws(() => getDatabaseConfig(), /DATABASE_URL/);
       assert.throws(() => getRedisConfig(), /REDIS_URL o REDIS_PASSWORD/);
     } finally {
       for (const k of Object.keys(process.env)) if (!(k in prev)) delete process.env[k];

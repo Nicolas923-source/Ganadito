@@ -10,7 +10,11 @@
     { href: '/', texto: 'Mapa y Spot' },
     { href: '/subastas', texto: 'Subastas' },
     { href: '/ordenes', texto: 'Órdenes' },
-    { href: '/trazabilidad', texto: 'Trazabilidad' }
+    { href: '/trazabilidad', texto: 'Trazabilidad' },
+    { href: '/mayorista', texto: 'Mayoristas' },
+    { href: '/gmx', texto: 'GMX' },
+    { href: '/logistica', texto: 'Logística' },
+    { href: '/ia', texto: 'Peso por IA' }
   ];
   const actual = (href: string) => (href === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(href));
 </script>

@@ -83,5 +83,6 @@ Los tests backend requieren PostgreSQL/PostGIS y Redis aislados. `test:e2e` y `t
 - [Ramas, revisión cruzada e integración](docs/GIT_WORKFLOW.md).
 - [Staging, versión y recuperación](infrastructure/deployment/README.md).
 - [Arquitectura](docs/ARCHITECTURE.md) y [reglas de agentes](AGENTS.md).
+- [Base PostgreSQL de producción, roles y migraciones](infrastructure/database/PRODUCCION.md).
 
 Cada entrega requiere rutas asignadas, contrato identificado, pruebas pertinentes y revisión del otro programador. Las dependencias se publican en PR separado. Reportar incidencias usando las [plantillas](.github/ISSUE_TEMPLATE/) y describir alcance, evidencia y limitaciones en el [PR](.github/PULL_REQUEST_TEMPLATE.md).
